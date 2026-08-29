@@ -1,0 +1,64 @@
+{
+  "name": "oura-dashboard",
+  "version": "0.1.0",
+  "description": "A self-hosted, multi-profile dashboard for Oura health data.",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/WesleyyC/oura-dashboard.git"
+  },
+  "homepage": "https://github.com/WesleyyC/oura-dashboard#readme",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext dev",
+    "build": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext build",
+    "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
+    "deploy:cloudflare": "vinext deploy",
+    "test": "npm run build && node scripts/run-tests.mjs",
+    "test:unit": "node scripts/run-tests.mjs",
+    "test:focus": "node scripts/run-tests.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "db:generate": "drizzle-kit generate",
+    "agent:worktree": "node scripts/agents/create-worktree.mjs",
+    "agent:status": "node scripts/agents/status.mjs",
+    "agent:context": "node scripts/agents/check-context.mjs",
+    "check:architecture": "node scripts/agents/check-architecture.mjs",
+    "agent:release-lock": "node scripts/agents/release-lock.mjs",
+    "audit:public": "node scripts/audit-public-release.mjs",
+    "release:export": "node scripts/create-public-release.mjs"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.2",
+    "jose": "6.2.10",
+    "lucide-react": "^1.28.0",
+    "next": "16.2.6",
+    "qrcode.react": "^4.2.0",
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.37.1",
+    "@tailwindcss/postcss": "4.2.1",
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.2",
+    "@vitejs/plugin-rsc": "0.5.26",
+    "drizzle-kit": "0.31.10",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.2.6",
+    "react-server-dom-webpack": "19.2.6",
+    "react-test-renderer": "^19.2.6",
+    "tailwindcss": "4.2.1",
+    "tsx": "^4.22.1",
+    "typescript": "5.9.3",
+    "vinext": "0.0.50",
+    "vite": "8.0.13",
+    "wrangler": "4.92.0"
+  },
+  "type": "module"
+}
