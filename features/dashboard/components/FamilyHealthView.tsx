@@ -8,7 +8,6 @@ import {
 
 import {
   buildFamilyTrend,
-  dateRangePosition,
   metricDefinition,
   rangeDateTicks,
   rangeWindow,
@@ -17,9 +16,7 @@ import {
   summarizeFamilyScore,
   trendWindowDays,
   type DailyHealthRecord,
-  type DateRangeWindow,
   type FamilyScoreKey,
-  type FamilyTrendPoint,
   type HealthSummary,
   type NumericHealthKey,
   type RangeKey,
@@ -35,13 +32,14 @@ import {
 } from "./ChartDateSelection";
 import { FamilyComparison } from "./FamilyComparison";
 import { MetricTrendChart } from "./MetricTrendChart";
+import { CHART_WIDTH, chartLinePath, createChartScale } from "../presentation/chart-geometry";
+import { ChartCrosshair, ChartDateAxis, ChartMarker, ChartMessage, ChartYAxis } from "./ChartPrimitives";
 import {
   familyScoreDomain,
   familyScoreTicks,
   formatDate,
   formatScore,
   RANGES,
-  type ChartDomain,
 } from "../presentation/health-ui";
 
 const FAMILY_SERIES: Array<{ key: FamilyScoreKey; label: string }> = [
@@ -50,7 +48,6 @@ const FAMILY_SERIES: Array<{ key: FamilyScoreKey; label: string }> = [
   { key: "activityScore", label: "Activity" },
 ];
 
-const CHART_WIDTH = 1_000;
 const CHART_HEIGHT = 220;
 
 export interface FamilyProfileData {
@@ -77,37 +74,6 @@ type SeriesStyle = CSSProperties & { "--series-color"?: string };
 
 function profileStyle(color: string): SeriesStyle {
   return { "--series-color": color };
-}
-
-function chartY(value: number, domain: ChartDomain): number {
-  const clamped = Math.min(domain.maximum, Math.max(domain.minimum, value));
-  return (
-    ((domain.maximum - clamped) / (domain.maximum - domain.minimum)) *
-    CHART_HEIGHT
-  );
-}
-
-function linePath(
-  points: FamilyTrendPoint[],
-  profileId: string,
-  domain: ChartDomain,
-  window: DateRangeWindow,
-): string {
-  let continues = false;
-  return points
-    .map((point) => {
-      const value = point.values[profileId];
-      if (value === null || value === undefined) {
-        continues = false;
-        return "";
-      }
-      const command = continues ? "L" : "M";
-      continues = true;
-      const x = dateRangePosition(point.date, window) * CHART_WIDTH;
-      return `${command}${x.toFixed(1)} ${chartY(value, domain).toFixed(1)}`;
-    })
-    .filter(Boolean)
-    .join(" ");
 }
 
 function formatScoreDifference(value: number | null): string {
@@ -159,6 +125,7 @@ function FamilyScorePanel({
     [trend],
   );
   const ticks = useMemo(() => familyScoreTicks(domain), [domain]);
+  const chartY = createChartScale(domain, CHART_HEIGHT, { clamp: true });
   const window = rangeWindow(range, today);
   const dateTicks = rangeDateTicks(range, today).map(formatDate);
   const id = `family-${score.key}`;
@@ -205,8 +172,8 @@ function FamilyScorePanel({
           className="family-chart-guide"
           x1="0"
           x2={CHART_WIDTH}
-          y1={chartY(tick, domain)}
-          y2={chartY(tick, domain)}
+          y1={chartY(tick)}
+          y2={chartY(tick)}
           key={tick}
         />
       ))}
@@ -214,7 +181,7 @@ function FamilyScorePanel({
         <path
           className="family-chart-series"
           data-profile-id={profile.id}
-          d={linePath(trend, profile.id, domain, window)}
+          d={chartLinePath(trend, (point) => point.values[profile.id], chartY, window)}
           style={profileStyle(color)}
           key={profile.id}
         />
@@ -330,58 +297,37 @@ function FamilyScorePanel({
           />
 
           <div className="family-chart-frame" aria-busy={loading}>
-            <div className="family-y-axis" aria-hidden="true">
-              {[...ticks].reverse().map((tick) => (
-                <span
-                  style={{ top: `${(chartY(tick, domain) / CHART_HEIGHT) * 100}%` }}
-                  key={tick}
-                >
-                  {tick}
-                </span>
-              ))}
-            </div>
+            <ChartYAxis className="family-y-axis" ticks={[...ticks].reverse()} domain={domain} />
             <div
               className="family-chart-plot chart-selection-surface"
               {...surfaceProps}
             >
               {chart}
               {activePoint && hasSelectableValues ? (
-                <span
-                  className="chart-selection-crosshair"
-                  style={{ left: `${activePosition * 100}%` }}
-                  aria-hidden="true"
-                >
+                <ChartCrosshair position={activePosition}>
                   {profiles.map(({ profile, color, loading: profileLoading }) => {
                     const value = activePoint.values[profile.id] ?? null;
                     if (profileLoading || value === null || !Number.isFinite(value)) {
                       return null;
                     }
                     return (
-                      <i
-                        className="chart-selection-marker"
+                      <ChartMarker
+                        position={(chartY(value) / CHART_HEIGHT) * 100}
                         data-profile-id={profile.id}
-                        style={{
-                          ...profileStyle(color),
-                          top: `${(chartY(value, domain) / CHART_HEIGHT) * 100}%`,
-                        }}
+                        style={profileStyle(color)}
                         key={profile.id}
                       />
                     );
                   })}
-                </span>
+                </ChartCrosshair>
               ) : null}
               {!loading && !trend.length ? (
-                <p className="chart-message">
+                <ChartMessage>
                   This comparison will appear after family profiles have data.
-                </p>
+                </ChartMessage>
               ) : null}
             </div>
-            <div
-              className="chart-date-axis family-date-axis"
-              aria-hidden="true"
-            >
-              {dateTicks.map((label) => <span key={label}>{label}</span>)}
-            </div>
+            <ChartDateAxis className="chart-date-axis family-date-axis" labels={dateTicks} />
           </div>
 
           {trend.length ? dataTable : null}

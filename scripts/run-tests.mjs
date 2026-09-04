@@ -23,6 +23,7 @@ export async function discoverTests(root = testsRoot) {
     for (const entry of entries) {
       const target = path.join(directory, entry.name);
       if (entry.isDirectory()) {
+        if (["node_modules", "work"].includes(entry.name)) continue;
         await visit(target);
       } else if (entry.isFile() && entry.name.endsWith(".test.mjs")) {
         files.push(target);

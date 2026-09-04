@@ -13,6 +13,11 @@ Production ownership areas are `dashboard`, `profile-management`,
 Repository policy and tooling use `architecture`, `scripts`, or `agents`.
 Run every unit and source test without building via `npm run test:unit`.
 
+For chart or dashboard layout/interaction changes, also run the synthetic
+[browser regressions](../../tests/features/dashboard/browser/README.md). Their
+test-only dependency package is separate from the application's dependencies;
+the Node test runner skips nested dependency and generated `work` directories.
+
 ## Before integration
 
 ```bash
@@ -22,6 +27,15 @@ npm run lint
 npm run check:architecture
 git diff --check
 ```
+
+For dashboard changes, after installing the browser test dependencies:
+
+```bash
+npm --prefix tests/features/dashboard/browser test
+```
+
+This suite also runs in the separate `Browser regressions` GitHub workflow on
+pull requests and pushes to `main`. CI validates only; it does not deploy.
 
 Review the intended diff as well as command output. Source moves must preserve
 behavioral assertions rather than weaken them.

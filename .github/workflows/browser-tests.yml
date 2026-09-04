@@ -1,0 +1,51 @@
+name: Browser regressions
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22.13.0
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tests/features/dashboard/browser/package-lock.json
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Install browser test dependencies
+        run: npm ci --prefix tests/features/dashboard/browser
+
+      - name: Install Chromium and system libraries
+        run: npm --prefix tests/features/dashboard/browser run install:browser -- --with-deps
+
+      - name: Test the synthetic dashboard
+        run: npm --prefix tests/features/dashboard/browser test
+
+      - name: Retain synthetic failure screenshots and traces
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: synthetic-browser-failures
+          path: tests/features/dashboard/browser/work/results
+          retention-days: 7
+          if-no-files-found: ignore

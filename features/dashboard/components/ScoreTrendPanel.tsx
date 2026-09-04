@@ -2,47 +2,21 @@
 
 import type { CSSProperties } from "react";
 
-import {
-  dateRangePosition,
-  type DateRangeWindow,
-} from "@/features/health-data/client";
+import type { DateRangeWindow } from "@/features/health-data/client";
 import {
   formatScore,
   type ChartDomain,
   type TrendPoint,
 } from "../presentation/health-ui";
 import { ChartDateSelection } from "./ChartDateSelection";
+import { CHART_WIDTH, chartLinePath, createChartScale } from "../presentation/chart-geometry";
+import { ChartCrosshair, ChartDateAxis, ChartMarker, ChartMessage, ChartYAxis } from "./ChartPrimitives";
 
 type ScoreTrendKey = "readiness" | "sleep" | "activity";
 
-const CHART_WIDTH = 1_000;
 const CHART_HEIGHT = 180;
 
 type SeriesStyle = CSSProperties & { "--series-color"?: string };
-
-function chartY(value: number, domain: ChartDomain): number {
-  return ((domain.maximum - value) / (domain.maximum - domain.minimum)) * CHART_HEIGHT;
-}
-
-function linePath(
-  points: TrendPoint[],
-  key: ScoreTrendKey,
-  domain: ChartDomain,
-  window: DateRangeWindow,
-): string {
-  let continues = false;
-  return points.map((point) => {
-    const value = point[key];
-    if (value === null) {
-      continues = false;
-      return "";
-    }
-    const command = continues ? "L" : "M";
-    continues = true;
-    const x = dateRangePosition(point.date, window) * CHART_WIDTH;
-    return `${command}${x.toFixed(1)} ${chartY(value, domain).toFixed(1)}`;
-  }).filter(Boolean).join(" ");
-}
 
 interface ScoreTrendPanelProps {
   id: string;
@@ -74,6 +48,7 @@ export function ScoreTrendPanel({
   loading,
 }: ScoreTrendPanelProps) {
   const hasValues = points.some((point) => point[valueKey] !== null);
+  const chartY = createChartScale(domain, CHART_HEIGHT);
 
   // Keep data-derived markup outside the selection render callback. Moving a
   // crosshair should not rebuild every path and accessible table row.
@@ -89,14 +64,14 @@ export function ScoreTrendPanel({
           className="score-trend-guide"
           x1="0"
           x2={CHART_WIDTH}
-          y1={chartY(tick, domain)}
-          y2={chartY(tick, domain)}
+          y1={chartY(tick)}
+          y2={chartY(tick)}
           key={tick}
         />
       ))}
       <path
         className="score-trend-series"
-        d={linePath(points, valueKey, domain, window)}
+        d={chartLinePath(points, (point) => point[valueKey], chartY, window)}
       />
     </svg>
   );
@@ -125,7 +100,7 @@ export function ScoreTrendPanel({
         const activeValue = activePoint?.[valueKey] ?? null;
         const activeY = activeValue === null
           ? null
-          : (chartY(activeValue, domain) / CHART_HEIGHT) * 100;
+          : (chartY(activeValue) / CHART_HEIGHT) * 100;
 
         return (
           <section
@@ -162,38 +137,26 @@ export function ScoreTrendPanel({
               </span>
             </div>
             <div className="score-trend-frame" aria-busy={loading}>
-              <div className="score-trend-y-axis" aria-hidden="true">
-                {ticks.map((tick) => (
-                  <span
-                    style={{ top: `${(chartY(tick, domain) / CHART_HEIGHT) * 100}%` }}
-                    key={tick}
-                  >
-                    {tick}
-                  </span>
-                ))}
-              </div>
+              <ChartYAxis className="score-trend-y-axis" ticks={ticks} domain={domain} />
               <div
                 className="score-trend-surface"
                 {...surfaceProps}
               >
                 {chart}
                 {activePoint && hasValues ? (
-                  <span
+                  <ChartCrosshair
                     className="score-trend-crosshair"
-                    style={{ left: `${activePosition * 100}%` }}
-                    aria-hidden="true"
+                    position={activePosition}
                   >
                     {activeY !== null ? (
-                      <i className="score-trend-marker" style={{ top: `${activeY}%` }} />
+                      <ChartMarker className="score-trend-marker" position={activeY} />
                     ) : null}
-                  </span>
+                  </ChartCrosshair>
                 ) : null}
-                {loading ? <p className="score-trend-message" role="status">Loading {label.toLowerCase()}…</p> : null}
-                {!loading && !hasValues ? <p className="score-trend-message">No {label.toLowerCase()} scores for this range.</p> : null}
+                {loading ? <ChartMessage className="score-trend-message" loading>Loading {label.toLowerCase()}…</ChartMessage> : null}
+                {!loading && !hasValues ? <ChartMessage className="score-trend-message">No {label.toLowerCase()} scores for this range.</ChartMessage> : null}
               </div>
-              <div className="score-trend-date-axis" aria-hidden="true">
-                {dateTicks.map((date) => <span key={date}>{date}</span>)}
-              </div>
+              <ChartDateAxis className="score-trend-date-axis" labels={dateTicks} />
             </div>
             {points.length ? dataTable : null}
           </section>

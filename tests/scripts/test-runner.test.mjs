@@ -48,6 +48,21 @@ test("selectTests filters known ownership areas and rejects unsafe input", () =>
   assert.throws(() => selectTests(files, "../dashboard"), /Invalid test area/);
 });
 
+test("discoverTests ignores dependencies and generated browser artifacts", async () => {
+  const fixture = await mkdtemp(path.join(testsRoot, ".runner-fixture-"));
+  try {
+    for (const directory of ["browser", "browser/node_modules/vendor", "browser/work/results"]) {
+      await mkdir(path.join(fixture, directory), { recursive: true });
+    }
+    for (const file of ["browser/real.test.mjs", "browser/node_modules/vendor/foreign.test.mjs", "browser/work/results/captured.test.mjs"]) {
+      await writeFile(path.join(fixture, file), "");
+    }
+    assert.deepEqual(await discoverTests(fixture), [path.join(fixture, "browser/real.test.mjs")]);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 test("discoverTests rejects traversal outside the repository test tree", async () => {
   await assert.rejects(discoverTests(path.resolve(testsRoot, "..")), /inside tests/);
 });
