@@ -175,6 +175,78 @@ function FamilyScorePanel({
     })
   );
 
+  // Keep data-derived markup outside the selection render callback. Moving a
+  // crosshair should not rebuild every path and accessible table row.
+  const chart = (
+    <svg
+      className="family-line-chart"
+      viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+      preserveAspectRatio="none"
+      role={trend.length ? "img" : undefined}
+      aria-labelledby={
+        trend.length
+          ? `${id}-chart-title ${id}-chart-description`
+          : undefined
+      }
+      aria-hidden={trend.length ? undefined : true}
+    >
+      {trend.length ? (
+        <>
+          <title id={`${id}-chart-title`}>
+            {`${score.label} scores for ${joinNames(profileNames)}`}
+          </title>
+          <desc id={`${id}-chart-description`}>
+            {`${treatment}. Visible absolute scores from ${domain.minimum} to ${domain.maximum}. Every profile shares this scale. Missing measurements create gaps in each line.`}
+          </desc>
+        </>
+      ) : null}
+      {ticks.map((tick) => (
+        <line
+          className="family-chart-guide"
+          x1="0"
+          x2={CHART_WIDTH}
+          y1={chartY(tick, domain)}
+          y2={chartY(tick, domain)}
+          key={tick}
+        />
+      ))}
+      {profiles.map(({ profile, color }) => (
+        <path
+          className="family-chart-series"
+          data-profile-id={profile.id}
+          d={linePath(trend, profile.id, domain, window)}
+          style={profileStyle(color)}
+          key={profile.id}
+        />
+      ))}
+    </svg>
+  );
+  const dataTable = (
+    <table className="visually-hidden">
+      <caption>{score.label} comparison chart data</caption>
+      <thead>
+        <tr>
+          <th>Date</th>
+          {profiles.map(({ profile }) => (
+            <th key={profile.id}>{profile.displayName}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {trend.map((point) => (
+          <tr key={point.date}>
+            <th>{point.label}</th>
+            {profiles.map(({ profile }) => (
+              <td key={profile.id}>
+                {formatScore(point.values[profile.id] ?? null)}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
   return (
     <ChartDateSelection
       points={trend}
@@ -260,55 +332,19 @@ function FamilyScorePanel({
           <div className="family-chart-frame" aria-busy={loading}>
             <div className="family-y-axis" aria-hidden="true">
               {[...ticks].reverse().map((tick) => (
-                <span key={tick}>{tick}</span>
+                <span
+                  style={{ top: `${(chartY(tick, domain) / CHART_HEIGHT) * 100}%` }}
+                  key={tick}
+                >
+                  {tick}
+                </span>
               ))}
             </div>
             <div
               className="family-chart-plot chart-selection-surface"
               {...surfaceProps}
             >
-              <svg
-                className="family-line-chart"
-                viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
-                preserveAspectRatio="none"
-                role={trend.length ? "img" : undefined}
-                aria-labelledby={
-                  trend.length
-                    ? `${id}-chart-title ${id}-chart-description`
-                    : undefined
-                }
-                aria-hidden={trend.length ? undefined : true}
-              >
-                {trend.length ? (
-                  <>
-                    <title id={`${id}-chart-title`}>
-                      {`${score.label} scores for ${joinNames(profileNames)}`}
-                    </title>
-                    <desc id={`${id}-chart-description`}>
-                      {`${treatment}. Visible absolute scores from ${domain.minimum} to ${domain.maximum}. Every profile shares this scale. Missing measurements create gaps in each line.`}
-                    </desc>
-                  </>
-                ) : null}
-                {ticks.map((tick) => (
-                  <line
-                    className="family-chart-guide"
-                    x1="0"
-                    x2={CHART_WIDTH}
-                    y1={chartY(tick, domain)}
-                    y2={chartY(tick, domain)}
-                    key={tick}
-                  />
-                ))}
-                {profiles.map(({ profile, color }) => (
-                  <path
-                    className="family-chart-series"
-                    data-profile-id={profile.id}
-                    d={linePath(trend, profile.id, domain, window)}
-                    style={profileStyle(color)}
-                    key={profile.id}
-                  />
-                ))}
-              </svg>
+              {chart}
               {activePoint && hasSelectableValues ? (
                 <span
                   className="chart-selection-crosshair"
@@ -348,31 +384,7 @@ function FamilyScorePanel({
             </div>
           </div>
 
-          {trend.length ? (
-            <table className="visually-hidden">
-              <caption>{score.label} comparison chart data</caption>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  {profiles.map(({ profile }) => (
-                    <th key={profile.id}>{profile.displayName}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {trend.map((point) => (
-                  <tr key={point.date}>
-                    <th>{point.label}</th>
-                    {profiles.map(({ profile }) => (
-                      <td key={profile.id}>
-                        {formatScore(point.values[profile.id] ?? null)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : null}
+          {trend.length ? dataTable : null}
         </section>
       )}
     </ChartDateSelection>

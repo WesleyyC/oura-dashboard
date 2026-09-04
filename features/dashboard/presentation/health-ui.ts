@@ -38,9 +38,14 @@ export function formatMinutes(value: number | null): string {
   return hours ? `${hours}h ${minutes ? `${minutes}m` : ""}`.trim() : `${minutes}m`;
 }
 
+const chartDateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
 export function formatDate(value: string): string {
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
-    .format(new Date(`${value}T00:00:00.000Z`));
+  return chartDateFormatter.format(new Date(`${value}T00:00:00.000Z`));
 }
 
 export function formatUpdatedAt(

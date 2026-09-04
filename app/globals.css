@@ -1339,6 +1339,7 @@ button:disabled {
 
 .chart-date-readout-date {
   flex: 0 0 auto;
+  min-width: 6ch;
   color: var(--ink);
   font-weight: 640;
 }
@@ -1437,6 +1438,23 @@ button:disabled {
   outline-offset: 4px;
 }
 
+/* Programmatic pointer focus can also match :focus-visible. Keep keyboard
+   navigation visible without framing a chart after clicking or tapping it. */
+.chart-selection-surface[data-chart-input="pointer"]:focus,
+.score-trend-surface[data-chart-input="pointer"]:focus {
+  outline: none;
+}
+
+.chart-selection-surface[data-chart-input="keyboard"]:focus,
+.score-trend-surface[data-chart-input="keyboard"]:focus {
+  outline: 3px solid color-mix(in oklch, var(--accent) 52%, transparent);
+  outline-offset: 4px;
+}
+
+.score-trend-surface[aria-disabled="true"] {
+  cursor: default;
+}
+
 .score-trend-chart {
   display: block;
   width: 100%;
@@ -1489,8 +1507,8 @@ button:disabled {
   inset: 0 auto auto 0;
   width: 34px;
   height: 180px;
-  color: var(--faint);
-  font-size: 0.6875rem;
+  color: var(--muted);
+  font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1504,8 +1522,8 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   margin: 8px 0 0 44px;
-  color: var(--faint);
-  font-size: 0.6875rem;
+  color: var(--muted);
+  font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1528,8 +1546,8 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   margin: 8px 12px 12px 54px;
-  color: var(--faint);
-  font-size: 0.6875rem;
+  color: var(--muted);
+  font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1545,13 +1563,15 @@ button:disabled {
 
 .chart-message {
   position: absolute;
-  inset: 0 0 28px 54px;
+  inset: 0;
   display: grid;
   margin: 0;
+  padding: 16px;
   place-items: center;
   background: color-mix(in oklch, var(--surface) 88%, transparent);
   color: var(--muted);
   font-size: 0.875rem;
+  text-align: center;
 }
 
 .family-report {
@@ -1709,15 +1729,17 @@ button:disabled {
   position: absolute;
   top: 0;
   left: 0;
-  display: flex;
   width: 34px;
   height: 220px;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: space-between;
-  color: var(--faint);
-  font-size: 0.6875rem;
+  color: var(--muted);
+  font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
+}
+
+.family-y-axis span {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
 }
 
 .family-date-axis {
@@ -2178,10 +2200,14 @@ button:disabled {
   flex-direction: column;
   align-items: flex-end;
   justify-content: space-between;
-  color: var(--faint);
-  font-size: 0.6875rem;
+  color: var(--muted);
+  font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
 }
+
+.metric-chart-y-axis span:first-child { transform: translateY(-50%); }
+.metric-chart-y-axis span:last-child { transform: translateY(50%); }
+.metric-chart-y-axis span { white-space: nowrap; }
 
 .metric-date-axis {
   margin-right: 0;
@@ -2754,14 +2780,12 @@ table.visually-hidden {
   .score-item dd { font-size: 1.75rem; }
   .score-item p { display: none; }
   .score-strip-placeholder .score-item { min-height: 122px; }
-  .chart-date-axis { font-size: 0.625rem; }
   .score-trend-panel-heading h3 { font-size: 1.125rem; }
   .score-trend-readout { gap: 7px; font-size: 0.6875rem; }
   .score-trend-readout strong { font-size: 1.5rem; }
-  .score-trend-date-axis { font-size: 0.625rem; }
   .metric-explorer { padding: 18px 12px; }
   .metric-chart-plot { margin-left: 46px; }
-  .metric-chart-y-axis { width: 38px; font-size: 0.625rem; }
+  .metric-chart-y-axis { width: 38px; }
   .metric-date-axis { margin-left: 46px; }
   .metric-row { gap: 12px; padding-inline: 6px; }
   .metric-row-main small { max-width: 180px; }

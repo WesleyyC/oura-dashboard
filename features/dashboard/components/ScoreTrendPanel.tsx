@@ -75,6 +75,39 @@ export function ScoreTrendPanel({
 }: ScoreTrendPanelProps) {
   const hasValues = points.some((point) => point[valueKey] !== null);
 
+  // Keep data-derived markup outside the selection render callback. Moving a
+  // crosshair should not rebuild every path and accessible table row.
+  const chart = (
+    <svg
+      className="score-trend-chart"
+      viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      {ticks.map((tick) => (
+        <line
+          className="score-trend-guide"
+          x1="0"
+          x2={CHART_WIDTH}
+          y1={chartY(tick, domain)}
+          y2={chartY(tick, domain)}
+          key={tick}
+        />
+      ))}
+      <path
+        className="score-trend-series"
+        d={linePath(points, valueKey, domain, window)}
+      />
+    </svg>
+  );
+  const dataTable = (
+    <table className="visually-hidden">
+      <caption>{label} score trend data</caption>
+      <thead><tr><th>Date</th><th>Score</th></tr></thead>
+      <tbody>{points.map((point) => <tr key={point.date}><th>{point.label}</th><td>{formatScore(point[valueKey])}</td></tr>)}</tbody>
+    </table>
+  );
+
   return (
     <ChartDateSelection
       points={points}
@@ -143,27 +176,7 @@ export function ScoreTrendPanel({
                 className="score-trend-surface"
                 {...surfaceProps}
               >
-                <svg
-                  className="score-trend-chart"
-                  viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
-                  preserveAspectRatio="none"
-                  aria-hidden="true"
-                >
-                  {ticks.map((tick) => (
-                    <line
-                      className="score-trend-guide"
-                      x1="0"
-                      x2={CHART_WIDTH}
-                      y1={chartY(tick, domain)}
-                      y2={chartY(tick, domain)}
-                      key={tick}
-                    />
-                  ))}
-                  <path
-                    className="score-trend-series"
-                    d={linePath(points, valueKey, domain, window)}
-                  />
-                </svg>
+                {chart}
                 {activePoint && hasValues ? (
                   <span
                     className="score-trend-crosshair"
@@ -182,13 +195,7 @@ export function ScoreTrendPanel({
                 {dateTicks.map((date) => <span key={date}>{date}</span>)}
               </div>
             </div>
-            {points.length ? (
-              <table className="visually-hidden">
-                <caption>{label} score trend data</caption>
-                <thead><tr><th>Date</th><th>Score</th></tr></thead>
-                <tbody>{points.map((point) => <tr key={point.date}><th>{point.label}</th><td>{formatScore(point[valueKey])}</td></tr>)}</tbody>
-              </table>
-            ) : null}
+            {points.length ? dataTable : null}
           </section>
         );
       }}

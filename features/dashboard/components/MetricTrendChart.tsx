@@ -116,6 +116,68 @@ export function MetricTrendChart({
   const window = rangeWindow(range, today);
   const dateTicks = rangeDateTicks(range, today).map(formatDate);
 
+  // Keep data-derived markup outside the selection render callback. Moving a
+  // crosshair should not rebuild every path and accessible table row.
+  const chart = (
+    <svg
+      className="metric-line-chart"
+      viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+      preserveAspectRatio="none"
+      role="img"
+      aria-labelledby={`${titleId} ${descriptionId}`}
+    >
+      <title id={titleId}>{`${metric.label} trend`}</title>
+      <desc id={descriptionId}>{`${treatment}. Solid lines show the trend; horizontal references show range averages.`}</desc>
+      {[0, 0.5, 1].map((ratio) => (
+        <line className="metric-chart-guide" x1="0" x2={CHART_WIDTH} y1={ratio * CHART_HEIGHT} y2={ratio * CHART_HEIGHT} key={ratio} />
+      ))}
+      {plotted.map((item) => {
+        const identity = item.identity;
+        const valueByDate = valuesBySeries.get(item.id) ?? new Map();
+        return (
+          <g key={item.id}>
+            {item.average !== null ? (
+              <line
+                className="metric-average-line"
+                data-tone={identity.type === "metric" ? identity.tone : undefined}
+                data-identity={identity.type}
+                data-profile-id={identity.type === "person" ? identity.profileId : undefined}
+                style={seriesStyle(identity)}
+                x1="0"
+                x2={CHART_WIDTH}
+                y1={chartY(item.average, minimum, maximum)}
+                y2={chartY(item.average, minimum, maximum)}
+              />
+            ) : null}
+            <path
+              className="metric-chart-series"
+              data-tone={identity.type === "metric" ? identity.tone : undefined}
+              data-identity={identity.type}
+              data-profile-id={identity.type === "person" ? identity.profileId : undefined}
+              style={seriesStyle(identity)}
+              d={linePath(dates, valueByDate, minimum, maximum, window)}
+            />
+          </g>
+        );
+      })}
+    </svg>
+  );
+  const dataTable = (
+    <table className="visually-hidden">
+      <caption>{`${metric.label} ${treatment.toLowerCase()} and range averages`}</caption>
+      <thead><tr><th>Date</th>{series.map((item) => <th key={item.id}>{item.label}</th>)}</tr></thead>
+      <tbody>{dates.map((date) => (
+        <tr key={date}>
+          <th>{formatDate(date)}</th>
+          {plotted.map((item) => (
+            <td key={item.id}>{formatMetricValue(valuesBySeries.get(item.id)?.get(date) ?? null, metric.format)}</td>
+          ))}
+        </tr>
+      ))}</tbody>
+      <tfoot><tr><th>Range average</th>{series.map((item) => <td key={item.id}>{formatMetricValue(item.average, metric.format)}</td>)}</tr></tfoot>
+    </table>
+  );
+
   return (
     <ChartDateSelection
       points={selectionPoints}
@@ -196,48 +258,7 @@ export function MetricTrendChart({
                   className="metric-chart-plot chart-selection-surface"
                   {...surfaceProps}
                 >
-                  <svg
-                    className="metric-line-chart"
-                    viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
-                    preserveAspectRatio="none"
-                    role="img"
-                    aria-labelledby={`${titleId} ${descriptionId}`}
-                  >
-                    <title id={titleId}>{`${metric.label} trend`}</title>
-                    <desc id={descriptionId}>{`${treatment}. Solid lines show the trend; horizontal references show range averages.`}</desc>
-                    {[0, 0.5, 1].map((ratio) => (
-                      <line className="metric-chart-guide" x1="0" x2={CHART_WIDTH} y1={ratio * CHART_HEIGHT} y2={ratio * CHART_HEIGHT} key={ratio} />
-                    ))}
-                    {plotted.map((item) => {
-                      const identity = item.identity;
-                      const valueByDate = valuesBySeries.get(item.id) ?? new Map();
-                      return (
-                        <g key={item.id}>
-                          {item.average !== null ? (
-                            <line
-                              className="metric-average-line"
-                              data-tone={identity.type === "metric" ? identity.tone : undefined}
-                              data-identity={identity.type}
-                              data-profile-id={identity.type === "person" ? identity.profileId : undefined}
-                              style={seriesStyle(identity)}
-                              x1="0"
-                              x2={CHART_WIDTH}
-                              y1={chartY(item.average, minimum, maximum)}
-                              y2={chartY(item.average, minimum, maximum)}
-                            />
-                          ) : null}
-                          <path
-                            className="metric-chart-series"
-                            data-tone={identity.type === "metric" ? identity.tone : undefined}
-                            data-identity={identity.type}
-                            data-profile-id={identity.type === "person" ? identity.profileId : undefined}
-                            style={seriesStyle(identity)}
-                            d={linePath(dates, valueByDate, minimum, maximum, window)}
-                          />
-                        </g>
-                      );
-                    })}
-                  </svg>
+                  {chart}
                   {activePoint && hasSelectableValues ? (
                     <span
                       className="chart-selection-crosshair"
@@ -274,19 +295,7 @@ export function MetricTrendChart({
               </div>
             </div>
 
-            <table className="visually-hidden">
-              <caption>{`${metric.label} ${treatment.toLowerCase()} and range averages`}</caption>
-              <thead><tr><th>Date</th>{series.map((item) => <th key={item.id}>{item.label}</th>)}</tr></thead>
-              <tbody>{dates.map((date) => (
-                <tr key={date}>
-                  <th>{formatDate(date)}</th>
-                  {plotted.map((item) => (
-                    <td key={item.id}>{formatMetricValue(valuesBySeries.get(item.id)?.get(date) ?? null, metric.format)}</td>
-                  ))}
-                </tr>
-              ))}</tbody>
-              <tfoot><tr><th>Range average</th>{series.map((item) => <td key={item.id}>{formatMetricValue(item.average, metric.format)}</td>)}</tr></tfoot>
-            </table>
+            {dataTable}
           </section>
         );
       }}

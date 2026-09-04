@@ -79,6 +79,8 @@ The initial dashboard shell reserves the three-score geometry with neutral, non-
 
 ## Motion and materials
 
+Chart selection moves crosshairs and readouts without reconstructing data-derived SVGs or accessible tables. Clicking or tapping keeps focus for subsequent keyboard use but does not draw a frame around the plot; Tab and chart-navigation keys retain a visible focus ring. Axis labels use the muted text color at a minimum of 12px, stay centered on their grid lines, and keep that size on phones. Empty and loading messages are centered within the plot, not the surrounding axes.
+
 Use 150–220ms ease-out transitions for selection, focus, hover, and expanding details. Do not orchestrate page-load animation. Respect `prefers-reduced-motion`. Reserve backdrop blur for the sticky control bar, with an opaque fallback under reduced transparency/high contrast conditions.
 
 ## Content and privacy
