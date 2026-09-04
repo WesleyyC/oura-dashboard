@@ -66,6 +66,8 @@ export interface ChartDateSelectionState<
     "aria-valuenow": number;
     "aria-valuetext": string;
     "aria-disabled": boolean;
+    "data-chart-input": "pointer" | "keyboard" | undefined;
+    onBlur(): void;
     onPointerMove(event: PointerEvent<HTMLDivElement>): void;
     onPointerDown(event: PointerEvent<HTMLDivElement>): void;
     onKeyDown(event: KeyboardEvent<HTMLDivElement>): void;
@@ -93,6 +95,7 @@ export function ChartDateSelection<T extends ChartDateSelectionPoint>({
 }: ChartDateSelectionProps<T>) {
   const group = useContext(ChartDateSelectionContext);
   const [localSelectedDate, setLocalSelectedDate] = useState<string | null>(null);
+  const [inputMethod, setInputMethod] = useState<"pointer" | "keyboard">();
   const selectedDate = group ? group.selectedDate : localSelectedDate;
   const selectDate = group ? group.selectDate : setLocalSelectedDate;
   const positions = useMemo(
@@ -125,6 +128,7 @@ export function ChartDateSelection<T extends ChartDateSelectionPoint>({
     const index = moveScoreTrendIndex(activeIndex, event.key, points.length);
     if (index === null) return;
     event.preventDefault();
+    setInputMethod("keyboard");
     selectDate(points[index].date);
   }
 
@@ -142,9 +146,12 @@ export function ChartDateSelection<T extends ChartDateSelectionPoint>({
       "aria-valuenow": activeIndex,
       "aria-valuetext": ariaValueText(activePoint),
       "aria-disabled": !interactive,
+      "data-chart-input": inputMethod,
+      onBlur: () => setInputMethod(undefined),
       onPointerMove: selectFromPointer,
       onPointerDown: (event) => {
         if (!interactive) return;
+        setInputMethod("pointer");
         selectFromPointer(event);
         event.currentTarget.focus({ preventScroll: true });
       },
