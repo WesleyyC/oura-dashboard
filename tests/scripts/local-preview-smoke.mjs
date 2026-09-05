@@ -15,7 +15,11 @@ for (const route of ["/", "/settings"]) {
 for (const route of ["/api/account", "/api/health", "/api/profiles", "/api/oura/diagnostics"]) {
   const response = await fetch(new URL(route, origin), {
     redirect: "manual", signal: AbortSignal.timeout(10_000),
-    headers: { "oai-authenticated-user-email": "synthetic@example.com", "Cf-Access-Authenticated-User-Email": "synthetic@example.com" },
+    headers: {
+      "oai-authenticated-user-id": "synthetic-preview-owner",
+      "oai-authenticated-user-email": "synthetic@example.com",
+      "Cf-Access-Authenticated-User-Email": "synthetic@example.com",
+    },
   });
   assert.equal(response.status, 401, `${route} must reject an unsigned identity`);
   assert.match(response.headers.get("cache-control") ?? "", /no-store/);

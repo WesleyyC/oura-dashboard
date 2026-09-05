@@ -95,7 +95,8 @@ try {
         throw error;
       });
       // Wait for the bounded history read too; subsequent range changes use cache.
-      await historyReady;
+      await (await historyReady).finished();
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       const initialMs = await page.evaluate(() => window.__lab.readyMs);
       assert.equal(requests.filter((url) => url.startsWith("/api/health")).length, 2);
       assert.ok(requests.filter((url) => url.startsWith("/api/health")).every((url) => new URL(url, origin).searchParams.get("profile") === "alex"));
@@ -105,6 +106,7 @@ try {
       const rangeMs = await measure(page, page.locator("#range-option-6m"), {
         selector: '[role="slider"][aria-disabled="false"][aria-valuemax="184"]', count: 4,
       });
+      assert.equal(requests.filter((url) => url.startsWith("/api/health")).length, 2, "range change must use the loaded cache");
       assert.equal(await page.locator(".daily-details tbody tr").count(), 0);
       const chart = page.getByRole("slider").first();
       await chart.focus();
