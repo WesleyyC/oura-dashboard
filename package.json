@@ -51,7 +51,7 @@
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
-    "react-server-dom-webpack": "19.2.6",
+    "react-server-dom-webpack": "19.2.8",
     "react-test-renderer": "^19.2.6",
     "tailwindcss": "4.2.1",
     "tsx": "^4.22.1",

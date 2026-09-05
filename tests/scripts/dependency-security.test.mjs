@@ -17,6 +17,19 @@ test("the release lockfile excludes esbuild versions affected by GHSA-67mh-4wv8-
   }
 });
 
+test("the React server decoder and ZIP tooling exclude their known vulnerable patch releases", async () => {
+  const { packages } = JSON.parse(await readFile(new URL("../../package-lock.json", import.meta.url), "utf8"));
+  for (const [name, entry] of Object.entries(packages)) {
+    const [major, minor, patch] = (entry.version ?? "0.0.0").split(".").map(Number);
+    if (name.endsWith("node_modules/react-server-dom-webpack") && major === 19 && minor === 2) {
+      assert.ok(patch >= 8, `${name}@${entry.version} is affected by GHSA-wx67-qw84-cm4g`);
+    }
+    if (name.endsWith("node_modules/fflate") && major === 0 && minor === 7) {
+      assert.ok(patch >= 5, `${name}@${entry.version} is affected by GHSA-px8p-9vwx-vf98`);
+    }
+  }
+});
+
 test("the patched Drizzle tool still generates an executable owner-scoped schema", async () => {
   const root = fileURLToPath(new URL("../../", import.meta.url));
   const directory = await mkdtemp(path.join(tmpdir(), "oura-schema-tooling-"));
