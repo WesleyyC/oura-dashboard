@@ -12,6 +12,25 @@ node scripts/agents/create-worktree.mjs <topic>
 The helper creates `.worktrees/<topic>` on `codex/<topic>`. It never fetches,
 prunes, repairs, or changes another worktree.
 
+Status inspection is bounded per Git command. An unavailable HEAD, failed
+command, or timeout produces an **incomplete** report and a nonzero exit code;
+it does not mean there are no changes or overlaps. Coordinate exact-file
+ownership using read-only checks. Do not repair another task's workspace.
+
+The creation helper reuses the root dependency installation only when both
+manifests match and the installed host packages match the lockfile. Check an
+installation without changing it with:
+
+```bash
+node scripts/agents/check-dependencies.mjs
+```
+
+An existing directory is not proof of a valid installation. If it is stale or
+incomplete, follow the single-attempt installation policy in `AGENTS.md` inside
+the task worktree. Do not replace the root installation while other tasks may
+be using it. Checks using older dependencies are preliminary, not a release
+gate; release validation requires the locked versions.
+
 ## Repository relocation
 
 After moving the repository, inspect physical `.worktrees/` directories and

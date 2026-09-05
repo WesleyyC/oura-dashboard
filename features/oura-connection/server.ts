@@ -3,6 +3,7 @@ export * from "./domain/connection-input";
 export * from "./domain/refresh-request";
 export type { ProfileRefreshResult } from "./domain/public-contracts";
 export * from "./server/collect-aggregates";
+export * from "./server/diagnostics";
 export * from "./server/invite-service";
 export * from "./server/oauth-service";
 export * from "./server/oura-client";

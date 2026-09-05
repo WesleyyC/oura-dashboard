@@ -34,3 +34,7 @@ affected credentials.
 
 See [Configuration](docs/configuration.md) and [Privacy](PRIVACY.md) for the
 operator checklist.
+
+See [Recovery](docs/recovery.md) for on-demand diagnostics, history repair,
+private backup handling, planned encryption-key rotation, and the synthetic
+restore drill. Never treat a source deployment as a database backup.

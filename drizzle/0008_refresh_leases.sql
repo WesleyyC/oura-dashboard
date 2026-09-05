@@ -1,0 +1,1 @@
+ALTER TABLE `health_sync_state_profile` ADD `lease_id` text;

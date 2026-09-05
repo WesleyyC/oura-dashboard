@@ -8,6 +8,7 @@ export interface RefreshRequest {
   profileId: string;
   timeZone: string;
   force?: boolean;
+  repairHistory?: boolean;
 }
 
 export function parseRefreshRequest(value: unknown): RefreshRequest {
@@ -16,7 +17,7 @@ export function parseRefreshRequest(value: unknown): RefreshRequest {
   }
   const input = value as Record<string, unknown>;
   const unknown = Object.keys(input).find(
-    (key) => key !== "profileId" && key !== "timeZone" && key !== "force",
+    (key) => !["profileId", "timeZone", "force", "repairHistory"].includes(key),
   );
   if (unknown) throw new Error("Refresh request contains an unknown field");
 
@@ -30,9 +31,13 @@ export function parseRefreshRequest(value: unknown): RefreshRequest {
   if ("force" in input && typeof input.force !== "boolean") {
     throw new Error("force must be a boolean");
   }
+  if ("repairHistory" in input && typeof input.repairHistory !== "boolean") {
+    throw new Error("repairHistory must be a boolean");
+  }
   return {
     profileId,
     timeZone,
     ...("force" in input ? { force: input.force as boolean } : {}),
+    ...("repairHistory" in input ? { repairHistory: input.repairHistory as boolean } : {}),
   };
 }

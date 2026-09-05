@@ -1,3 +1,5 @@
+import { abortable, abortableDelay } from "@/shared/abortable";
+
 const API_BASE_URL = "https://api.ouraring.com/v2/usercollection";
 const MAX_PAGES = 100;
 const MAX_RETRIES = 2;
@@ -72,6 +74,7 @@ export interface OuraDateRange {
 }
 
 export interface OuraClientOptions {
+  signal?: AbortSignal;
   fetchImpl?: (
     input: string | URL | Request,
     init?: RequestInit,
@@ -108,6 +111,7 @@ export async function fetchOuraResource(
   let nextToken: string | null = null;
 
   for (let page = 1; page <= MAX_PAGES; page += 1) {
+    options.signal?.throwIfAborted();
     const pageUrl = new URL(baseUrl);
     if (nextToken) pageUrl.searchParams.set("next_token", nextToken);
     const response = await requestWithRetries(
@@ -115,7 +119,8 @@ export async function fetchOuraResource(
       accessToken,
       options,
     );
-    const payload = await parsePayload(response);
+    const payload = await parsePayload(response, options.signal);
+    options.signal?.throwIfAborted();
     const data = payload.data;
     if (
       !Array.isArray(data) ||
@@ -155,13 +160,15 @@ async function requestWithRetries(
   options: OuraClientOptions,
 ): Promise<Response> {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const sleep = options.sleep ?? wait;
+  const sleep = options.sleep ?? ((milliseconds: number) => abortableDelay(milliseconds, options.signal));
   const now = options.now ?? (() => new Date());
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+    options.signal?.throwIfAborted();
     let response: Response;
     try {
-      response = await fetchImpl(url, {
+      const signal = AbortSignal.any([AbortSignal.timeout(30_000), ...(options.signal ? [options.signal] : [])]);
+      response = await abortable(fetchImpl(url, {
         method: "GET",
         headers: {
           Accept: "application/json",
@@ -169,8 +176,8 @@ async function requestWithRetries(
         },
         redirect: "manual",
         cache: "no-store",
-        signal: AbortSignal.timeout(30_000),
-      });
+        signal,
+      }), signal);
     } catch {
       throw new OuraApiError("unavailable");
     }
@@ -182,7 +189,7 @@ async function requestWithRetries(
         response.status === 429
           ? retryAfterMilliseconds(response.headers.get("Retry-After"), now())
           : Math.min(8_000, 1_000 * 2 ** attempt);
-      await sleep(delay);
+      await abortable(sleep(delay), options.signal);
       continue;
     }
     if (response.status === 401) throw new OuraApiError("unauthorized");
@@ -197,9 +204,10 @@ async function requestWithRetries(
 
 async function parsePayload(
   response: Response,
+  signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
   try {
-    const payload: unknown = await response.json();
+    const payload: unknown = await abortable(response.json(), signal);
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
       throw new Error("Invalid payload");
     }
@@ -252,8 +260,4 @@ function addUtcDays(value: string, amount: number): string {
   const date = new Date(`${value}T00:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + amount);
   return date.toISOString().slice(0, 10);
-}
-
-function wait(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }

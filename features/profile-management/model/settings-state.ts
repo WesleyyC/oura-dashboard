@@ -27,6 +27,7 @@ export const REFRESH_ERROR_LABELS: Record<SafeRefreshErrorCode, string> = {
   oura_unavailable: "Oura is temporarily unavailable",
   rate_limited: "Oura asked us to try again later",
   storage_failed: "The refreshed data could not be saved",
+  refresh_interrupted: "Refresh was interrupted. Your saved data is safe; try again.",
   unexpected: "This profile could not be refreshed",
 };
 

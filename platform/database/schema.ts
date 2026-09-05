@@ -226,6 +226,7 @@ export const healthSyncStateProfile = sqliteTable(
     status: text("status").notNull(),
     safeErrorCode: text("safe_error_code"),
     lockExpiresAt: text("lock_expires_at"),
+    leaseId: text("lease_id"),
   },
   (table) => [
     primaryKey({ columns: [table.ownerId, table.profileId] }),

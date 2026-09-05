@@ -12,7 +12,7 @@ test("every journaled migration applies in order to a fresh database", async () 
   const journal = JSON.parse(
     await readFile(new URL("../../../drizzle/meta/_journal.json", import.meta.url), "utf8"),
   );
-  assert.equal(journal.entries.length, 8);
+  assert.equal(journal.entries.length, 9);
   assert.deepEqual(
     journal.entries.map(({ idx }) => idx),
     journal.entries.map((_, index) => index),

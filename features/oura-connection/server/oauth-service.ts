@@ -2,6 +2,7 @@ import { eq, lte } from "drizzle-orm";
 
 import { getDb, ouraOAuthStates } from "@/platform/database/server";
 import { getRuntimeEnv } from "@/platform/runtime/server";
+import { abortable } from "@/shared/abortable";
 import { hashOAuthState } from "./token-crypto.ts";
 import type { OuraTokenSet } from "./token-contracts.ts";
 
@@ -26,6 +27,7 @@ export type SafeOuraErrorCode =
   | "oauth_scope_rejected"
   | "profile_not_found"
   | "token_access_invalid"
+  | "token_endpoint_rate_limited"
   | "token_endpoint_unavailable"
   | "token_expiry_invalid"
   | "token_exchange_failed"
@@ -44,6 +46,7 @@ const SAFE_ERROR_MESSAGES: Record<SafeOuraErrorCode, string> = {
   oauth_scope_rejected: "Oura rejected the requested permissions",
   profile_not_found: "Oura profile was not found",
   token_access_invalid: "Oura returned an invalid access token",
+  token_endpoint_rate_limited: "Oura is temporarily limiting authorization requests",
   token_endpoint_unavailable: "The Oura token endpoint is unavailable",
   token_expiry_invalid: "Oura returned an invalid token expiry",
   token_exchange_failed: "Oura authorization could not be completed",
@@ -171,6 +174,7 @@ export function refreshOAuthTokens(
   refreshToken: string,
   fetchImpl: FetchImplementation = fetch,
   now = new Date(),
+  signal?: AbortSignal,
 ): Promise<OuraTokenSet> {
   if (!refreshToken || refreshToken.length > 8_192) {
     return Promise.reject(new SafeOuraError("invalid_request"));
@@ -185,6 +189,7 @@ export function refreshOAuthTokens(
     },
     fetchImpl,
     now,
+    signal,
   );
 }
 
@@ -244,19 +249,22 @@ async function postTokenForm(
   form: Record<string, string>,
   fetchImpl: FetchImplementation,
   now: Date,
+  signal?: AbortSignal,
 ): Promise<OuraTokenSet> {
   validateConfig(config);
   validTimestamp(now);
   let response: Response;
   try {
-    response = await fetchImpl(TOKEN_URL, {
+    signal?.throwIfAborted();
+    const requestSignal = AbortSignal.any([AbortSignal.timeout(30_000), ...(signal ? [signal] : [])]);
+    response = await abortable(fetchImpl(TOKEN_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams(form).toString(),
       redirect: "manual",
       cache: "no-store",
-      signal: AbortSignal.timeout(30_000),
-    });
+      signal: requestSignal,
+    }), requestSignal);
   } catch {
     throw new SafeOuraError("token_endpoint_unavailable");
   }
@@ -266,7 +274,7 @@ async function postTokenForm(
 
   let payload: unknown;
   try {
-    payload = await response.json();
+    payload = await abortable(response.json(), signal);
   } catch {
     throw new SafeOuraError("token_payload_unreadable");
   }
@@ -276,6 +284,9 @@ async function postTokenForm(
 async function tokenEndpointErrorCode(
   response: Response,
 ): Promise<SafeOuraErrorCode> {
+  // Transport status takes precedence over an untrusted OAuth error body.
+  if (response.status === 429) return "token_endpoint_rate_limited";
+  if (response.status >= 500) return "token_endpoint_unavailable";
   let payload: unknown;
   try {
     payload = await response.json();

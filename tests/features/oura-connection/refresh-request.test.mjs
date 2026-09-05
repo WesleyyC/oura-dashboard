@@ -58,3 +58,9 @@ test("cached refresh clients retain the compatibility timezone", async () => {
     },
   );
 });
+
+test("history repair is explicit and cannot be enabled by a truthy string", async () => {
+  const { parseRefreshRequest } = await loadRefreshRequestModule();
+  assert.equal(parseRefreshRequest({ profileId: "profile-a", repairHistory: true }).repairHistory, true);
+  assert.throws(() => parseRefreshRequest({ profileId: "profile-a", repairHistory: "true" }), /boolean/);
+});

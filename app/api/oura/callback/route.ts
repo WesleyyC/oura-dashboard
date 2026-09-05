@@ -104,6 +104,7 @@ function callbackStatus(code: SafeOuraErrorCode): CallbackStatus {
     case "oauth_request_rejected":
     case "oauth_scope_rejected":
     case "token_access_invalid":
+    case "token_endpoint_rate_limited":
     case "token_endpoint_unavailable":
     case "token_expiry_invalid":
     case "token_exchange_failed":

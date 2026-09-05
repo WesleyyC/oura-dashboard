@@ -40,6 +40,7 @@ test("app contains framework adapters rather than feature implementation", async
     "app/api/health/route.ts",
     "app/api/oura/authorize/route.ts",
     "app/api/oura/callback/route.ts",
+    "app/api/oura/diagnostics/route.ts",
     "app/api/oura/guest/authorize/route.ts",
     "app/api/oura/guest/callback/route.ts",
     "app/api/oura/guest/inspect/route.ts",

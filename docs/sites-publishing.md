@@ -14,6 +14,7 @@ Publish only an exact, clean commit that has passed:
 
 ```bash
 npm run audit:public
+node scripts/agents/check-dependencies.mjs
 npm test
 npm run typecheck
 npm run lint
@@ -21,6 +22,16 @@ git diff --check
 git status --short --branch
 git rev-parse HEAD
 ```
+
+Ignored operator configuration may be present locally during verification.
+It must remain untracked: the public checks inspect Git membership, not whether
+the operator has configured a local checkout. Do not delete working operator
+configuration to make tests pass.
+
+Require both GitHub checks, `verify` and `browser-tests`, before merging a
+release. Preserve strict/up-to-date checks, administrator enforcement, and the
+existing pull-request rules. Browser tests use fictional records only; see
+[Testing](agents/testing.md). CI validates code and does not deploy it.
 
 If source changes after the gate, repeat it and publish the new SHA. Never
 print or upload Oura tokens, deployment credentials, raw health responses, raw

@@ -18,14 +18,17 @@ export async function collectOuraAggregates(
   ) {
     throw new Error("Oura profile slug is invalid");
   }
-  const [activity, readiness, dailySleep, sleep, stress, workouts] =
+  const pending = new AbortController();
+  const sharedOptions = { ...options, signal: AbortSignal.any([pending.signal, ...(options.signal ? [options.signal] : [])]) };
+  try {
+    const [activity, readiness, dailySleep, sleep, stress, workouts] =
     await Promise.all([
-      fetchOuraResource("daily_activity", range, accessToken, options),
-      fetchOuraResource("daily_readiness", range, accessToken, options),
-      fetchOuraResource("daily_sleep", range, accessToken, options),
-      fetchOuraResource("sleep", range, accessToken, options),
-      fetchOuraResource("daily_stress", range, accessToken, options),
-      fetchOuraResource("workout", range, accessToken, options),
+      fetchOuraResource("daily_activity", range, accessToken, sharedOptions),
+      fetchOuraResource("daily_readiness", range, accessToken, sharedOptions),
+      fetchOuraResource("daily_sleep", range, accessToken, sharedOptions),
+      fetchOuraResource("sleep", range, accessToken, sharedOptions),
+      fetchOuraResource("daily_stress", range, accessToken, sharedOptions),
+      fetchOuraResource("workout", range, accessToken, sharedOptions),
     ]);
 
   return mergeOuraAggregates({
@@ -37,4 +40,7 @@ export async function collectOuraAggregates(
     stress,
     workouts,
   });
+  } finally {
+    pending.abort();
+  }
 }

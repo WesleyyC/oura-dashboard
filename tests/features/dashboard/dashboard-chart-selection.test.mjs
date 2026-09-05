@@ -117,7 +117,7 @@ function selectedDates(root) {
     .map((slider) => slider.props["aria-valuetext"].split(",")[0]);
 }
 
-test("chart date selection stays inside the currently visible dashboard view", (t) => {
+test("chart date selection stays inside the currently visible dashboard view", async (t) => {
   const renderer = create(React.createElement(
     DashboardContent,
     { controller: controller("member-one") },
@@ -136,6 +136,7 @@ test("chart date selection stays inside the currently visible dashboard view", (
       { controller: controller("family") },
     ));
   });
+  await act(async () => { await import("../../../features/dashboard/components/FamilyHealthView.tsx"); });
   assert.deepEqual(selectedDates(renderer.root), ["Aug 1", "Aug 1", "Aug 1", "Aug 1"]);
 
   act(() => {

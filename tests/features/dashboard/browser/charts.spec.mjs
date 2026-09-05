@@ -14,6 +14,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function expectSharedDate(page, expected) {
+  await expect(page.getByRole("slider")).toHaveCount(4);
   const dates = await page.getByRole("slider").evaluateAll(elements =>
     elements.map(element => element.getAttribute("aria-valuetext").split(",")[0])
   );

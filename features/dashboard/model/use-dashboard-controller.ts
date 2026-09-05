@@ -10,7 +10,6 @@ import {
 import {
   rangeWindow,
   type DateRangeWindow,
-  type HealthResponse,
   type RangeKey,
 } from "@/features/health-data/client";
 import type { ProfileRefreshResult } from "@/features/oura-connection/client";
@@ -25,30 +24,13 @@ import {
 } from "../client/dashboard-api";
 import {
   isStale,
-  mergeHealthResults,
   resolveView,
-  type HealthLoadFailureMode,
   type ProfileLoadState,
 } from "./dashboard-state";
 
+import { coversWindow, useProfileHealthCache } from "./use-profile-health-cache";
+
 const defaultDashboardApi = createDashboardApi((input, init) => fetch(input, init));
-
-interface HealthLoadEntry {
-  promise: Promise<HealthResponse>;
-  version: number;
-  profileId: string;
-  window: DateRangeWindow;
-  controller: AbortController;
-  applied: boolean;
-  failureMode: HealthLoadFailureMode;
-  preserveHistoryError: boolean;
-  failureMessage?: string;
-}
-
-interface AppliedHealthLoad {
-  version: number;
-  window: DateRangeWindow;
-}
 
 export interface DashboardController {
   view: string;
@@ -74,6 +56,7 @@ export function useDashboardController(
   const [profiles, setProfiles] = useState<ProfileLoadState[]>([]);
   const [profilesLoading, setProfilesLoading] = useState(true);
   const [profileListError, setProfileListError] = useState<string | null>(null);
+  const [profileListToken, setProfileListToken] = useState(0);
   const [cacheReloadToken, setCacheReloadToken] = useState(0);
   const [automaticCheckToken, setAutomaticCheckToken] = useState(0);
   const [historyLoadToken, setHistoryLoadToken] = useState(0);
@@ -81,169 +64,23 @@ export function useDashboardController(
   const [timeZone] = useState(resolveLocalTimeZone);
   const profilesRef = useRef(profiles);
   const automaticAttempts = useRef(new Map<string, string>());
-  const historyRequested = useRef(false);
-  const healthLoads = useRef(new Map<string, HealthLoadEntry>());
-  const activeHealthLoads = useRef(new Set<HealthLoadEntry>());
-  const nextHealthVersion = useRef(new Map<string, number>());
-  const appliedHealthLoads = useRef(new Map<string, AppliedHealthLoad[]>());
+  const historyRequested = useRef(new Set<string>());
+  const lifecycle = useRef(0);
   const today = dateInTimeZone(now, timeZone);
   const requiredHistoryStart = rangeWindow("6m", today).start;
 
   const requestHistoryLoad = useCallback(() => {
-    if (historyRequested.current) return;
-    historyRequested.current = true;
     setHistoryLoadToken((value) => value + 1);
   }, []);
 
-  const requestHealthLoad = useCallback((
-    profile: ProfileLoadState,
-    window: DateRangeWindow,
-    {
-      afterCurrent = false,
-      failureMode = "visible",
-      preserveHistoryError = false,
-      failureMessage,
-    }: {
-      afterCurrent?: boolean;
-      failureMode?: HealthLoadFailureMode;
-      preserveHistoryError?: boolean;
-      failureMessage?: string;
-    } = {},
-  ): HealthLoadEntry => {
-    const key = [
-      profile.profile.id,
-      profile.profile.slug,
-      window.start,
-      window.end,
-    ].join(":");
-    const current = healthLoads.current.get(key);
-    if (current && !afterCurrent) return current;
-
-    const pendingForProfile = afterCurrent
-      ? [...activeHealthLoads.current].filter((entry) =>
-          entry.profileId === profile.profile.id
-        )
-      : [];
-    const version = (nextHealthVersion.current.get(profile.profile.id) ?? 0) + 1;
-    nextHealthVersion.current.set(profile.profile.id, version);
-    const controller = new AbortController();
-    const promise = (async () => {
-      if (pendingForProfile.length) {
-        await Promise.allSettled(pendingForProfile.map(({ promise }) => promise));
-      }
-      return api.loadHealthProfile(profile, window, controller.signal);
-    })();
-    const entry = {
-      promise,
-      version,
-      controller,
-      applied: false,
-      window,
-      failureMode,
-      preserveHistoryError,
-      failureMessage,
-      profileId: profile.profile.id,
-    };
-    healthLoads.current.set(key, entry);
-    activeHealthLoads.current.add(entry);
-    const removeEntry = () => {
-      if (healthLoads.current.get(key) === entry) {
-        healthLoads.current.delete(key);
-      }
-      activeHealthLoads.current.delete(entry);
-    };
-    void promise.then(removeEntry, removeEntry);
-    return entry;
-  }, [api]);
-
-  const loadAndApplyProfile = useCallback(async ({
-    profile,
-    window,
-    signal,
-    failureMode = "visible",
-    preserveHistoryError = false,
-    afterCurrent = false,
-    failureMessage,
-  }: {
-    profile: ProfileLoadState;
-    window: DateRangeWindow;
-    signal?: AbortSignal;
-    failureMode?: "visible" | "silent";
-    preserveHistoryError?: boolean;
-    afterCurrent?: boolean;
-    failureMessage?: string;
-  }) => {
-    const entry = requestHealthLoad(profile, window, {
-      afterCurrent,
-      failureMode,
-      preserveHistoryError,
-      failureMessage,
-    });
-    try {
-      const health = await entry.promise;
-      if (entry.controller.signal.aborted || signal?.aborted) return;
-      if (entry.applied) return;
-      entry.applied = true;
-      const applied = appliedHealthLoads.current.get(profile.profile.id) ?? [];
-      const newerLoads = applied.filter(({ version }) => version > entry.version);
-      if (newerLoads.some(({ window }) => coversWindow(window, entry.window))) {
-        return;
-      }
-      const protectedWindows = newerLoads.map(({ window }) => window);
-      const safeHealth = protectedWindows.length
-        ? {
-            ...health,
-            records: health.records.filter(({ date }) =>
-              !protectedWindows.some((window) => dateInWindow(date, window))
-            ),
-          }
-        : health;
-      appliedHealthLoads.current.set(
-        profile.profile.id,
-        rememberAppliedLoad(applied, entry),
-      );
-      setProfiles((current) =>
-        mergeHealthResults(
-          current,
-          [profile],
-          [{ status: "fulfilled", value: safeHealth }],
-          window,
-          entry.failureMode,
-          entry.preserveHistoryError,
-        )
-      );
-    } catch (reason) {
-      if (entry.controller.signal.aborted || signal?.aborted) return;
-      if (entry.applied) return;
-      entry.applied = true;
-      const applied = appliedHealthLoads.current.get(profile.profile.id) ?? [];
-      if (
-        applied.some(({ version, window }) =>
-          version > entry.version && coversWindow(window, entry.window)
-        )
-      ) return;
-      setProfiles((current) =>
-        mergeHealthResults(
-          current,
-          [profile],
-          [{
-            status: "rejected",
-            reason: entry.failureMessage
-              ? new Error(entry.failureMessage)
-              : reason,
-          }],
-          window,
-          entry.failureMode,
-        )
-      );
-    }
-  }, [requestHealthLoad]);
+  const { loadAndApplyProfile, resetHealthCache } = useProfileHealthCache(api, setProfiles);
 
   const refreshProfiles = useCallback(async (
     targets: ProfileLoadState[],
     force = false,
   ) => {
     if (!targets.length) return;
+    const generation = lifecycle.current;
     setProfiles((current) =>
       current.map((item) =>
         targets.some(({ profile }) => profile.id === item.profile.id)
@@ -252,20 +89,21 @@ export function useDashboardController(
       )
     );
 
-    const results = await runWithConcurrency(targets, 2, (target) =>
-      api.requestProfileRefresh(target.profile.id, timeZone, force)
-    );
-    await Promise.all(
-      targets.map(async (target, index) => {
-        const result = results[index];
-        if (result.status === "rejected") {
+    await runWithConcurrency(targets, 2, async (target) => {
+        if (generation !== lifecycle.current) return;
+        let result: ProfileRefreshResult;
+        try {
+          result = await api.requestProfileRefresh(target.profile.id, timeZone, force);
+        } catch {
+          if (generation !== lifecycle.current) return;
           updateRefreshResult(target.profile.id, null);
           return;
         }
-        updateRefreshResult(target.profile.id, result.value);
+        if (generation !== lifecycle.current) return;
+        updateRefreshResult(target.profile.id, result);
         if (
-          result.value.status === "refreshed" ||
-          result.value.status === "fresh"
+          result.status === "refreshed" ||
+          result.status === "fresh"
         ) {
           const reloadWindow = loadedProfileWindow(target, today);
           await loadAndApplyProfile({
@@ -276,7 +114,7 @@ export function useDashboardController(
             preserveHistoryError: reloadWindow.start > requiredHistoryStart,
           });
         }
-      }),
+      },
     );
 
     function updateRefreshResult(
@@ -331,12 +169,10 @@ export function useDashboardController(
 
   useEffect(() => {
     const controller = new AbortController();
-    historyRequested.current = false;
-    for (const entry of activeHealthLoads.current) entry.controller.abort();
-    healthLoads.current.clear();
-    activeHealthLoads.current.clear();
-    nextHealthVersion.current.clear();
-    appliedHealthLoads.current.clear();
+    lifecycle.current += 1;
+    historyRequested.current.clear();
+    automaticAttempts.current.clear();
+    resetHealthCache();
 
     async function initialize() {
       try {
@@ -359,15 +195,16 @@ export function useDashboardController(
         setProfilesLoading(false);
 
         const initialWindow = rangeWindow("7d", today);
-        await Promise.allSettled(
-          initialStates.map((profile) =>
+        await runWithConcurrency(
+          profilesInView(initialStates, resolveView(initialView, summaries)), 2,
+          (profile) =>
             loadAndApplyProfile({
               profile,
               window: initialWindow,
               signal: controller.signal,
               preserveHistoryError: true,
             })
-          ),
+          ,
         );
         if (controller.signal.aborted) return;
         requestHistoryLoad();
@@ -382,25 +219,29 @@ export function useDashboardController(
     }
 
     void initialize();
-    return () => controller.abort();
+    return () => {
+      lifecycle.current += 1;
+      controller.abort();
+    };
   }, [
     api,
     initialView,
+    profileListToken,
     loadAndApplyProfile,
     requestHistoryLoad,
+    resetHealthCache,
     today,
   ]);
 
-  useEffect(() => () => {
-    for (const entry of activeHealthLoads.current) entry.controller.abort();
-    healthLoads.current.clear();
-    activeHealthLoads.current.clear();
-  }, []);
 
   useEffect(() => {
-    const clock = window.setInterval(() => setNow(new Date()), 60_000);
+    const clock = window.setInterval(() => {
+      if (document.visibilityState !== "hidden") setNow(new Date());
+    }, 60_000);
     const cachePoll = window.setInterval(
-      () => setCacheReloadToken((value) => value + 1),
+      () => {
+        if (document.visibilityState !== "hidden") setCacheReloadToken((value) => value + 1);
+      },
       5 * 60_000,
     );
     const handleVisibility = () => {
@@ -408,6 +249,7 @@ export function useDashboardController(
         setNow(new Date());
         setCacheReloadToken((value) => value + 1);
         setAutomaticCheckToken((value) => value + 1);
+        requestHistoryLoad();
       }
     };
     document.addEventListener("visibilitychange", handleVisibility);
@@ -416,44 +258,50 @@ export function useDashboardController(
       window.clearInterval(cachePoll);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, []);
+  }, [requestHistoryLoad]);
 
   useEffect(() => {
-    if (!historyLoadToken) return;
-    const snapshot = profilesRef.current;
-    if (!snapshot.length) {
-      historyRequested.current = false;
-      return;
-    }
-    const controller = new AbortController();
+    if (!historyLoadToken || document.visibilityState === "hidden") return;
+    const snapshot = profilesInView(profilesRef.current, view);
+    if (!snapshot.length) return;
     const historyWindow = rangeWindow("6m", today);
+    const targets = snapshot.filter((profile) => {
+      const key = `${profile.profile.id}:${historyWindow.start}:${historyWindow.end}`;
+      if (historyRequested.current.has(key)) return false;
+      if (profile.loadedStartDate && profile.loadedEndDate && coversWindow(
+        { start: profile.loadedStartDate, end: profile.loadedEndDate }, historyWindow,
+      )) return false;
+      historyRequested.current.add(key);
+      return true;
+    });
 
     async function loadHistory() {
-      await Promise.allSettled(
-        snapshot.map((profile) =>
-          loadAndApplyProfile({
+      const generation = lifecycle.current;
+      await runWithConcurrency(targets, 2, async (profile) => {
+          if (generation !== lifecycle.current) return;
+          await loadAndApplyProfile({
             profile,
             window: historyWindow,
-            signal: controller.signal,
             failureMode: "silent",
           })
-        ),
+        }
       );
     }
 
     void loadHistory();
-    return () => controller.abort();
-  }, [historyLoadToken, loadAndApplyProfile, today]);
+    // Requests belong to the cache lifecycle, not a range selector render.
+    // Initialization/unmount aborts their entry controllers. A changed view
+    // must not discard a deduplicated request that is still filling its cache.
+  }, [historyLoadToken, loadAndApplyProfile, today, view]);
 
   useEffect(() => {
-    if (!cacheReloadToken) return;
-    const snapshot = profilesRef.current;
+    if (!cacheReloadToken || document.visibilityState === "hidden") return;
+    const snapshot = profilesInView(profilesRef.current, view);
     if (!snapshot.length) return;
     const controller = new AbortController();
 
     async function reloadCachedProfiles() {
-      await Promise.allSettled(
-        snapshot.map((profile) => {
+      await runWithConcurrency(snapshot, 2, (profile) => {
           const reloadWindow = loadedProfileWindow(profile, today);
           return loadAndApplyProfile({
             profile,
@@ -461,7 +309,7 @@ export function useDashboardController(
             signal: controller.signal,
             preserveHistoryError: reloadWindow.start > requiredHistoryStart,
           });
-        }),
+        },
       );
     }
 
@@ -472,10 +320,11 @@ export function useDashboardController(
     loadAndApplyProfile,
     requiredHistoryStart,
     today,
+    view,
   ]);
 
   useEffect(() => {
-    if (!automaticCheckToken) return;
+    if (!automaticCheckToken || document.visibilityState === "hidden") return;
     const snapshot = profilesRef.current;
     const checkedAt = new Date();
     const staleProfiles = snapshot.filter(({ profile }) => {
@@ -491,7 +340,7 @@ export function useDashboardController(
       const attemptKey =
         `${profile.lastSucceededAt ?? ""}:${profile.coverageStartDate ?? ""}`;
       return automaticAttempts.current.get(profile.id) !== attemptKey;
-    });
+    }).sort((left, right) => Number(right.profile.slug === view) - Number(left.profile.slug === view));
     if (!staleProfiles.length) return;
     staleProfiles.forEach(({ profile }) => {
       automaticAttempts.current.set(
@@ -504,10 +353,13 @@ export function useDashboardController(
     automaticCheckToken,
     refreshProfiles,
     requiredHistoryStart,
+    view,
   ]);
 
   function changeView(next: string) {
     setView(next);
+    setCacheReloadToken((value) => value + 1);
+    requestHistoryLoad();
     const url = new URL(window.location.href);
     url.searchParams.set("view", next);
     window.history.replaceState(null, "", url);
@@ -519,6 +371,11 @@ export function useDashboardController(
   }
 
   function retryProfiles() {
+    if (profileListError) {
+      setProfilesLoading(true);
+      setProfileListToken((value) => value + 1);
+      return;
+    }
     const retryHistory = range !== "7d" &&
       profilesRef.current.some(({ historyError }) => historyError !== null);
     setProfiles((current) =>
@@ -530,7 +387,7 @@ export function useDashboardController(
       }))
     );
     if (retryHistory) {
-      historyRequested.current = false;
+      historyRequested.current.clear();
       requestHistoryLoad();
       return;
     }
@@ -553,6 +410,10 @@ export function useDashboardController(
   };
 }
 
+function profilesInView(profiles: ProfileLoadState[], view: string): ProfileLoadState[] {
+  return view === "family" ? profiles : profiles.filter(({ profile }) => profile.slug === view);
+}
+
 function loadedProfileWindow(
   profile: ProfileLoadState,
   today: string,
@@ -560,27 +421,4 @@ function loadedProfileWindow(
   return profile.loadedStartDate && profile.loadedEndDate
     ? { start: profile.loadedStartDate, end: profile.loadedEndDate }
     : rangeWindow("7d", today);
-}
-
-function coversWindow(
-  coverage: DateRangeWindow,
-  requested: DateRangeWindow,
-): boolean {
-  return coverage.start <= requested.start && coverage.end >= requested.end;
-}
-
-function dateInWindow(date: string, window: DateRangeWindow): boolean {
-  return date >= window.start && date <= window.end;
-}
-
-function rememberAppliedLoad(
-  applied: AppliedHealthLoad[],
-  entry: HealthLoadEntry,
-): AppliedHealthLoad[] {
-  return [
-    ...applied.filter(({ version, window }) =>
-      version > entry.version || !coversWindow(entry.window, window)
-    ),
-    { version: entry.version, window: entry.window },
-  ];
 }

@@ -146,7 +146,10 @@ test("settings orders people first, demotes backend state, and hides deletion co
     "Ready",
   );
 
-  const details = renderer.root.findByType("details");
+  const recovery = renderer.root.findByProps({ className: "account-disclosure sync-diagnostics" });
+  assert.equal(recovery.props.open, undefined);
+  assert.equal(recovery.findByType("summary").children.join(""), "Sync diagnostics and recovery");
+  const details = renderer.root.findByProps({ className: "account-disclosure" });
   assert.equal(details.props.open, undefined);
   assert.equal(details.props.className, "account-disclosure");
   assert.equal(details.findByType("summary").children.join(""), "Delete dashboard data");
