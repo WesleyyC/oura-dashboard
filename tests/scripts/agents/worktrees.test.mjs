@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { lstat, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -14,6 +14,7 @@ import {
   parseNameStatusPaths,
   parseStatusPaths,
   statusForRepository,
+  formatStatus,
 } from "../../../scripts/agents/status.mjs";
 import { createGitFixture } from "./git-fixture.mjs";
 
@@ -194,3 +195,38 @@ test("status reports overlap between a rename source and an edit", async (t) => 
     },
   ]);
 });
+
+test("status marks an unreadable branch as incomplete without repairing another worktree", async (t) => {
+  const fixture = await createGitFixture(t);
+  fixture.runGit("worktree", "add", ".worktrees/unborn", "-b", "codex/unborn");
+  fixture.runGit("update-ref", "-d", "refs/heads/codex/unborn");
+  const report = statusForRepository(fixture.root);
+  const item = report.worktrees.find(({ branch }) => branch === "codex/unborn");
+  assert.equal(report.complete, false);
+  assert.equal(item.inspection, "incomplete");
+  assert.match(formatStatus(report), /incomplete|unknown/i);
+  const cli = runCli("status.mjs", [], fixture.root);
+  assert.notEqual(cli.status, 0);
+  assert.equal(fixture.runGit("worktree", "list", "--porcelain").includes("codex/unborn"), true);
+});
+
+for (const [label, installedVersion, shouldLink] of [
+  ["matching", "1.2.3", true],
+  ["stale", "1.2.2", false],
+  ["missing", null, false],
+]) {
+  test(`worktree dependency reuse requires ${label} installed packages to match the lock`, async (t) => {
+    const fixture = await createGitFixture(t);
+    await fixture.commitFile("package.json", JSON.stringify({ name: "fixture", private: true, dependencies: { sample: "1.2.3" } }));
+    await fixture.commitFile("package-lock.json", JSON.stringify({ lockfileVersion: 3, packages: {
+      "": { name: "fixture", dependencies: { sample: "1.2.3" } },
+      "node_modules/sample": { version: "1.2.3" },
+    } }));
+    await mkdir(join(fixture.root, "node_modules/sample"), { recursive: true });
+    if (installedVersion) await writeFile(join(fixture.root, "node_modules/sample/package.json"), JSON.stringify({ name: "sample", version: installedVersion }));
+    const result = runCli("create-worktree.mjs", ["dependency-check"], fixture.root);
+    assert.equal(result.status, 0, result.stderr);
+    const installed = await lstat(join(fixture.root, ".worktrees/dependency-check/node_modules")).then((entry) => entry.isSymbolicLink(), () => false);
+    assert.equal(installed, shouldLink);
+  });
+}

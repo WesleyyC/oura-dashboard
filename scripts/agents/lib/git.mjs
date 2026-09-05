@@ -3,16 +3,16 @@ import { isAbsolute, resolve } from "node:path";
 
 export function runGit(
   args,
-  { cwd = process.cwd(), allowFailure = false, trimOutput = true } = {},
+  { cwd = process.cwd(), allowFailure = false, trimOutput = true, timeout } = {},
 ) {
-  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
-  if (result.error) {
-    throw new Error(`Git could not start: ${result.error.message}`);
+  const result = spawnSync("git", args, { cwd, encoding: "utf8", timeout, killSignal: "SIGKILL" });
+  if (result.error && !allowFailure) {
+    throw new Error(`Git command could not complete (${args[0] ?? "unknown"})`);
   }
   const output = {
     status: result.status ?? 1,
-    stdout: trimOutput ? result.stdout.trim() : result.stdout,
-    stderr: trimOutput ? result.stderr.trim() : result.stderr,
+    stdout: trimOutput ? (result.stdout ?? "").trim() : result.stdout ?? "",
+    stderr: trimOutput ? (result.stderr ?? "").trim() : result.stderr ?? "",
   };
   if (!allowFailure && output.status !== 0) {
     throw new Error(`Git command failed (${args[0] ?? "unknown"})`);
@@ -20,17 +20,17 @@ export function runGit(
   return output;
 }
 
-export function repositoryContext(cwd = process.cwd()) {
-  const root = runGit(["rev-parse", "--show-toplevel"], { cwd }).stdout;
-  const gitDirText = runGit(["rev-parse", "--git-dir"], { cwd }).stdout;
+export function repositoryContext(cwd = process.cwd(), { timeout } = {}) {
+  const root = runGit(["rev-parse", "--show-toplevel"], { cwd, timeout }).stdout;
+  const gitDirText = runGit(["rev-parse", "--git-dir"], { cwd, timeout }).stdout;
   const commonText = runGit(["rev-parse", "--git-common-dir"], {
-    cwd,
+    cwd, timeout,
   }).stdout;
   return {
     root,
     gitDir: absoluteGitPath(gitDirText, root),
     gitCommonDir: absoluteGitPath(commonText, root),
-    branch: runGit(["branch", "--show-current"], { cwd }).stdout,
+    branch: runGit(["branch", "--show-current"], { cwd, timeout }).stdout,
   };
 }
 

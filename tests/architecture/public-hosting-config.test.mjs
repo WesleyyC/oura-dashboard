@@ -11,25 +11,39 @@ import {
   loadHostingConfig,
   localBindingConfigFor,
 } from "../../build/hosting-config.ts";
+import { auditPublicFiles, listTrackedFiles } from "../../scripts/audit-public-release.mjs";
+import { createGitFixture } from "../scripts/agents/git-fixture.mjs";
 
 const execFile = promisify(execFileCallback);
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 
 test("operator deployment files are ignored and absent from the tracked release", async () => {
+  const tracked = new Set(await listTrackedFiles(repositoryRoot));
   for (const file of [".openai/hosting.json", "wrangler.jsonc"]) {
     const ignored = await execFile("git", ["check-ignore", "--no-index", "-q", file], {
       cwd: repositoryRoot,
     }).then(() => true, () => false);
     assert.equal(ignored, true, file);
+    assert.equal(tracked.has(file), false, `${file} must not be tracked`);
   }
-  await assert.rejects(
-    readFile(path.join(repositoryRoot, ".openai/hosting.json")),
-    (error) => error.code === "ENOENT",
-  );
-  await assert.rejects(
-    readFile(path.join(repositoryRoot, "wrangler.jsonc")),
-    (error) => error.code === "ENOENT",
-  );
+});
+
+test("local operator files can exist, but force-tracking them fails the public boundary", async (t) => {
+  const fixture = await createGitFixture(t);
+  await fixture.commitFile(".gitignore", ".openai/hosting.json\nwrangler.jsonc\n");
+  await mkdir(path.join(fixture.root, ".openai"));
+  await writeFile(path.join(fixture.root, ".openai/hosting.json"), "{}\n");
+  await writeFile(path.join(fixture.root, "wrangler.jsonc"), "{}\n");
+  const files = await listTrackedFiles(fixture.root);
+  assert.equal(files.includes(".openai/hosting.json"), false);
+  assert.equal(files.includes("wrangler.jsonc"), false);
+  assert.deepEqual(await auditPublicFiles({ root: fixture.root, files }), []);
+  fixture.runGit("add", "-f", ".openai/hosting.json", "wrangler.jsonc");
+  const issues = await auditPublicFiles({ root: fixture.root, files: await listTrackedFiles(fixture.root) });
+  assert.deepEqual(issues, [
+    { path: ".openai/hosting.json", category: "operator-config" },
+    { path: "wrangler.jsonc", category: "operator-config" },
+  ]);
 });
 
 test("tracked hosting examples are fictional and structurally complete", async () => {

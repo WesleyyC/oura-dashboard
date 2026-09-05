@@ -4,6 +4,11 @@ import type { SafeRefreshErrorCode } from "@/features/profile-management/client"
 import {
   getDb,
   healthSyncStateProfile,
+  healthProfiles,
+  currentRefreshLease,
+  LostRefreshLeaseError,
+  validateLeaseIdentity,
+  type RefreshLease,
 } from "@/platform/database/server";
 import { getRuntimeEnv } from "@/platform/runtime/server";
 import {
@@ -19,6 +24,7 @@ export interface RefreshStatusContext {
   range: { start: string; end: string };
   rowCount: number;
   completedAt: string;
+  lease: RefreshLease;
 }
 
 export interface RefreshFailureContext {
@@ -26,6 +32,7 @@ export interface RefreshFailureContext {
   profileId: string;
   failedAt: string;
   safeErrorCode: SafeRefreshErrorCode;
+  lease: RefreshLease;
 }
 
 export async function acquireRefreshLease(
@@ -33,9 +40,10 @@ export async function acquireRefreshLease(
   profileId: string,
   now = new Date(),
   timeZone = DEFAULT_TIME_ZONE,
-): Promise<boolean> {
+): Promise<RefreshLease | null> {
   const attemptedAt = validTimestamp(now);
   const lockExpiresAt = new Date(now.getTime() + LEASE_MS).toISOString();
+  const id = crypto.randomUUID();
   const date = dateInTimeZone(now, timeZone);
   const db = getDb();
   await db
@@ -63,20 +71,22 @@ export async function acquireRefreshLease(
       SET status = 'refreshing',
           last_attempt_at = ?,
           lock_expires_at = ?,
+          lease_id = ?,
           safe_error_code = NULL
       WHERE owner_id = ?
         AND profile_id = ?
         AND (lock_expires_at IS NULL OR lock_expires_at <= ?)
     `)
-    .bind(attemptedAt, lockExpiresAt, ownerId, profileId, attemptedAt)
+    .bind(attemptedAt, lockExpiresAt, id, ownerId, profileId, attemptedAt)
     .run();
-  return result.meta.changes === 1;
+  return result.meta.changes === 1 ? { ownerId, profileId, id, expiresAt: lockExpiresAt } : null;
 }
 
 export async function markRefreshSuccess(
   context: RefreshStatusContext,
 ): Promise<void> {
-  await getDb()
+  validateLeaseIdentity(context.lease, context.ownerId, context.profileId);
+  const result = await getDb()
     .update(healthSyncStateProfile)
     .set({
       startDate: sql<string>`MIN(${healthSyncStateProfile.startDate}, ${context.range.start})`,
@@ -87,28 +97,47 @@ export async function markRefreshSuccess(
       status: "succeeded",
       safeErrorCode: null,
       lockExpiresAt: null,
+      leaseId: null,
     })
     .where(and(
       eq(healthSyncStateProfile.ownerId, context.ownerId),
       eq(healthSyncStateProfile.profileId, context.profileId),
+      currentRefreshLease(context.lease),
     ));
+  if (result.meta.changes !== 1) throw new LostRefreshLeaseError();
 }
 
 export async function markRefreshFailure(
   context: RefreshFailureContext,
 ): Promise<void> {
-  await getDb()
+  validateLeaseIdentity(context.lease, context.ownerId, context.profileId);
+  const result = await getDb()
     .update(healthSyncStateProfile)
     .set({
       updatedAt: context.failedAt,
       status: "failed",
       safeErrorCode: context.safeErrorCode,
       lockExpiresAt: null,
+      leaseId: null,
     })
     .where(and(
       eq(healthSyncStateProfile.ownerId, context.ownerId),
       eq(healthSyncStateProfile.profileId, context.profileId),
+      currentRefreshLease(context.lease),
     ));
+  if (result.meta.changes !== 1) throw new LostRefreshLeaseError();
+}
+
+export async function markRefreshReauthorizationRequired(
+  ownerId: string,
+  profileId: string,
+  lease: RefreshLease,
+): Promise<void> {
+  validateLeaseIdentity(lease, ownerId, profileId);
+  const result = await getDb().update(healthProfiles)
+    .set({ status: "reauthorization_required", updatedAt: new Date().toISOString() })
+    .where(and(eq(healthProfiles.ownerId, ownerId), eq(healthProfiles.id, profileId), currentRefreshLease(lease)));
+  if (result.meta.changes !== 1) throw new LostRefreshLeaseError();
 }
 
 function validTimestamp(now: Date): string {

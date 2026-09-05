@@ -12,6 +12,7 @@ export type SafeRefreshErrorCode =
   | "oura_unavailable"
   | "rate_limited"
   | "storage_failed"
+  | "refresh_interrupted"
   | "unexpected";
 
 export interface HealthAccount {

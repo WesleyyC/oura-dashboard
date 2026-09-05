@@ -7,9 +7,9 @@ export function validateTopic(value) {
   return value;
 }
 
-export function listWorktrees(cwd = process.cwd()) {
+export function listWorktrees(cwd = process.cwd(), { timeout } = {}) {
   return parseWorktreePorcelain(
-    runGit(["worktree", "list", "--porcelain"], { cwd }).stdout,
+    runGit(["worktree", "list", "--porcelain"], { cwd, timeout }).stdout,
   );
 }
 

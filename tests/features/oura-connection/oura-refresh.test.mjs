@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { OuraApiError } from "../../../features/oura-connection/server/oura-client.ts";
+import { refreshOAuthTokens } from "../../../features/oura-connection/server/oauth-service.ts";
 import {
   isProfileStale,
   refreshProfile,
 } from "../../../features/oura-connection/server/refresh-service.ts";
 
 const NOW = new Date("2026-07-30T15:00:00.000Z");
+const LEASE = { ownerId: "owner-a", profileId: "profile-a", id: "test-lease", expiresAt: "2026-07-30T15:05:00.000Z" };
 const PROFILE = {
   id: "profile-a",
   slug: "member-one",
@@ -35,7 +37,7 @@ function dependencies(overrides = {}) {
   return {
     now: () => NOW,
     loadProfile: async () => PROFILE,
-    acquireLease: async () => true,
+    acquireLease: async () => LEASE,
     loadTokens: async () => VALID_TOKENS,
     rotateTokens: async () => ROTATED_TOKENS,
     saveTokens: async () => {},
@@ -59,7 +61,86 @@ test("three hours is the stale boundary", () => {
   );
   assert.equal(isProfileStale(null, NOW), true);
   assert.equal(isProfileStale("not-a-date", NOW), true);
+  assert.equal(isProfileStale("2026-08-01T00:00:00.000Z", NOW), true);
 });
+
+for (const [label, lastSucceededAt, expectedStart] of [
+  ["three-week absence", "2026-09-04T15:00:00.000Z", "2026-09-04"],
+  ["absence exceeding retention", "2025-01-01T15:00:00.000Z", "2026-03-25"],
+  ["unknown completion", null, "2026-03-25"],
+  ["invalid completion", "invalid", "2026-03-25"],
+  ["future completion", "2026-10-01T15:00:00.000Z", "2026-03-25"],
+  ["recent completion", "2026-09-24T15:00:00.000Z", "2026-09-18"],
+]) {
+  for (const force of [false, true]) {
+    test(`refresh covers ${label}, force=${force}`, async () => {
+      let collectedRange;
+      let successRange;
+      const result = await refreshProfile("owner-a", "profile-a", dependencies({
+        force,
+        now: () => new Date("2026-09-25T15:00:00.000Z"),
+        loadProfile: async () => ({ ...PROFILE, lastSucceededAt, coverageStartDate: "2026-03-01" }),
+        collect: async (_tokens, _profile, range) => {
+          collectedRange = range;
+          return [];
+        },
+        markSuccess: async ({ range }) => { successRange = range; },
+      }));
+      assert.equal(result.status, "refreshed");
+      assert.deepEqual(collectedRange, { start: expectedStart, end: "2026-09-25" });
+      assert.deepEqual(successRange, collectedRange);
+    });
+  }
+}
+
+test("catch-up includes the previous successful local day across a time-zone boundary", async () => {
+  let collectedRange;
+  await refreshProfile("owner-a", "profile-a", dependencies({
+    now: () => new Date("2026-09-25T02:00:00.000Z"),
+    timeZone: "America/Los_Angeles",
+    loadProfile: async () => ({ ...PROFILE, lastSucceededAt: "2026-09-04T02:00:00.000Z" }),
+    collect: async (_tokens, _profile, range) => { collectedRange = range; return []; },
+  }));
+  assert.deepEqual(collectedRange, { start: "2026-09-03", end: "2026-09-24" });
+});
+
+for (const [label, status, body, expectedCode] of [
+  ["service outage", 503, "unavailable", "oura_unavailable"],
+  ["outage with misleading grant body", 502, { error: "invalid_grant" }, "oura_unavailable"],
+  ["rate limit", 429, "slow down", "rate_limited"],
+  ["revoked grant", 400, { error: "invalid_grant" }, "authorization_required"],
+  ["bad application credentials", 401, { error: "invalid_client" }, "configuration_missing"],
+  ["bad request", 400, { error: "invalid_request" }, "configuration_missing"],
+  ["bad scope", 400, { error: "invalid_scope" }, "configuration_missing"],
+  ["unknown rejection", 400, { error: "unrecognized" }, "unexpected"],
+  ["malformed success", 200, "unreadable", "unexpected"],
+  ["network failure", 0, null, "oura_unavailable"],
+]) {
+  test(`token ${label} has the correct recovery without exposing upstream details`, async () => {
+    const reauthorizations = [];
+    const failures = [];
+    let collected = false;
+    const result = await refreshProfile("owner-a", "profile-a", dependencies({
+      loadTokens: async () => ({ ...VALID_TOKENS, expiresAt: NOW.toISOString() }),
+      rotateTokens: (tokens) => refreshOAuthTokens({
+        clientId: "synthetic-client", clientSecret: "synthetic-secret",
+        redirectUri: "https://dashboard.example.com/api/oura/callback", scopes: ["daily", "workout"],
+      }, tokens.refreshToken, async () => {
+        if (!status) throw new Error("private-upstream-detail");
+        return new Response(typeof body === "string" ? body : JSON.stringify({ ...body, error_description: "private-upstream-detail" }), { status });
+      }, NOW),
+      collect: async () => { collected = true; return []; },
+      markReauthorizationRequired: async (...identity) => { reauthorizations.push(identity); },
+      markFailure: async (failure) => { failures.push(failure); },
+    }));
+    assert.equal(result.safeErrorCode, expectedCode);
+    assert.equal(result.status, "failed");
+    assert.equal(collected, false);
+    assert.deepEqual(reauthorizations, expectedCode === "authorization_required" ? [["owner-a", "profile-a", LEASE]] : []);
+    assert.equal(failures[0].safeErrorCode, expectedCode);
+    assert.doesNotMatch(JSON.stringify({ result, failures }), /private-upstream-detail|synthetic-secret/);
+  });
+}
 
 test("fresh profiles skip collection unless refresh is forced", async () => {
   let leases = 0;
@@ -70,7 +151,7 @@ test("fresh profiles skip collection unless refresh is forced", async () => {
     }),
     acquireLease: async () => {
       leases += 1;
-      return true;
+      return LEASE;
     },
   });
 
@@ -153,7 +234,7 @@ test("China-local refreshes end the rolling range and initialize the lease on Au
       }),
       acquireLease: async (...args) => {
         leaseArguments = args;
-        return true;
+        return LEASE;
       },
       collect: async (_tokens, _profile, range) => {
         collectedRange = range;
@@ -338,3 +419,39 @@ test("a second unauthorized response isolates reauthorization to one profile", a
     "failed:authorization_required",
   ]);
 });
+
+test("refresh deadline aborts collection and cannot publish a late completion", async () => {
+  let finish;
+  let collectionSignal;
+  const events = [];
+  const result = await refreshProfile("owner-a", "profile-a", dependencies({
+    deadlineMs: 20,
+    collect: async (_tokens, _profile, _range, signal) => {
+      collectionSignal = signal;
+      return new Promise((resolve) => { finish = resolve; });
+    },
+    writeRecords: async () => events.push("write"),
+    markSuccess: async () => events.push("success"),
+    markFailure: async ({ lease, safeErrorCode }) => { events.push([lease.id, safeErrorCode]); },
+  }));
+  assert.equal(result.safeErrorCode, "refresh_interrupted");
+  assert.equal(collectionSignal.aborted, true);
+  finish([{ date: "2026-07-30" }]);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(events, [[LEASE.id, "refresh_interrupted"]]);
+});
+
+for (const stage of ["loadProfile", "acquireLease", "markFailure", "markReauthorizationRequired"]) {
+  test(`refresh remains bounded when ${stage} never settles`, async () => {
+    const overrides = {
+      deadlineMs: 10,
+      cleanupDeadlineMs: 10,
+      [stage]: () => new Promise(() => {}),
+    };
+    if (stage === "markFailure") overrides.collect = async () => { throw new OuraApiError("unavailable"); };
+    if (stage === "markReauthorizationRequired") overrides.loadTokens = async () => null;
+    const result = await refreshProfile("owner-a", "profile-a", dependencies(overrides));
+    assert.equal(result.status, "failed");
+    assert.ok(["refresh_interrupted", "storage_failed"].includes(result.safeErrorCode));
+  });
+}

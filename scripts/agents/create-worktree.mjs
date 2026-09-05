@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { repositoryContext, runGit } from "./lib/git.mjs";
 import { validateTopic } from "./lib/worktrees.mjs";
+import { inspectDependencies } from "./check-dependencies.mjs";
 
 export async function createTaskWorktree(topicValue, cwd = process.cwd()) {
   const topic = validateTopic(topicValue);
@@ -57,6 +58,7 @@ async function linkDependenciesWhenSafe(root, taskPath) {
     ]);
     if (rootSource !== taskSource) return;
   }
+  if (!(await inspectDependencies(root)).valid) return;
   const target = relative(taskPath, resolve(root, "node_modules"));
   await symlink(target, resolve(taskPath, "node_modules"), "dir");
 }

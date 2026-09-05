@@ -1,6 +1,9 @@
 import { and, eq, sql } from "drizzle-orm";
 
-import { getDb, ouraCredentials } from "@/platform/database/server";
+import {
+  getDb, ouraCredentials, healthSyncStateProfile, currentRefreshLease,
+  LostRefreshLeaseError, validateLeaseIdentity, type RefreshLease,
+} from "@/platform/database/server";
 import { getRuntimeEnv } from "@/platform/runtime/server";
 import {
   decryptTokenSet,
@@ -62,7 +65,8 @@ export async function saveTokenSet(
   const updatedAt = new Date().toISOString();
   const grantedScopes = JSON.stringify(tokens.grantedScopes);
 
-  await getDb()
+  const db = getDb();
+  const upsert = db
     .insert(ouraCredentials)
     .values({
       ownerId,
@@ -88,14 +92,37 @@ export async function saveTokenSet(
         updatedAt,
       },
     });
+  // Reconnection and invalidation are one transaction. An older refresh must
+  // not overwrite this connection after its upstream request returns.
+  await db.batch([
+    upsert,
+    db.update(healthSyncStateProfile)
+      .set({ leaseId: null, lockExpiresAt: null, status: "idle", safeErrorCode: null })
+      .where(and(eq(healthSyncStateProfile.ownerId, ownerId), eq(healthSyncStateProfile.profileId, profileId))),
+  ]);
 }
 
 export async function replaceTokenSet(
   ownerId: string,
   profileId: string,
   tokens: OuraTokenSet,
+  lease: RefreshLease,
 ): Promise<void> {
-  await saveTokenSet(ownerId, profileId, tokens);
+  validateLeaseIdentity(lease, ownerId, profileId);
+  const encrypted = await encryptTokenSet(
+    tokens, { ownerId, profileId, version: ENCRYPTION_VERSION }, encryptionKey(),
+  );
+  const result = await getDb().update(ouraCredentials).set({
+    ...encrypted,
+    expiresAt: tokens.expiresAt,
+    grantedScopes: JSON.stringify(tokens.grantedScopes),
+    updatedAt: new Date().toISOString(),
+  }).where(and(
+    eq(ouraCredentials.ownerId, ownerId),
+    eq(ouraCredentials.profileId, profileId),
+    currentRefreshLease(lease),
+  ));
+  if (result.meta.changes !== 1) throw new LostRefreshLeaseError();
 }
 
 function encryptionKey(): string {

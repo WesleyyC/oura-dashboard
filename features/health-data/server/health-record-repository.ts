@@ -1,10 +1,14 @@
-import { and, asc, between, eq, sql } from "drizzle-orm";
+import { and, asc, between, eq, getTableColumns, sql } from "drizzle-orm";
 
 import {
   getDb,
   healthDailyProfile,
   healthProfiles,
   healthSyncStateProfile,
+  currentRefreshLease,
+  LostRefreshLeaseError,
+  validateLeaseIdentity,
+  type RefreshLease,
 } from "@/platform/database/server";
 import {
   ensureHealthAccount,
@@ -108,10 +112,12 @@ export async function writeHealthRecords(
   profileId: string,
   records: DailyHealthRecord[],
   ingestedAt = new Date().toISOString(),
+  lease?: RefreshLease,
 ): Promise<number> {
   if (!ownerId || !profileId) {
     throw new Error("Health record identity is invalid");
   }
+  if (lease) validateLeaseIdentity(lease, ownerId, profileId);
   const chunkSize = 3;
   for (let index = 0; index < records.length; index += chunkSize) {
     await writeHealthChunk(
@@ -119,6 +125,7 @@ export async function writeHealthRecords(
       profileId,
       records.slice(index, index + chunkSize),
       ingestedAt,
+      lease,
     );
   }
   return records.length;
@@ -129,14 +136,34 @@ async function writeHealthChunk(
   profileId: string,
   chunk: DailyHealthRecord[],
   ingestedAt: string,
+  lease?: RefreshLease,
 ): Promise<void> {
   if (!chunk.length) return;
   const values = chunk.map((record) => ({
+    ...record,
     ownerId,
     profileId,
-    ...record,
     ingestedAt,
   }));
+  if (lease) {
+    const columns = Object.entries(getTableColumns(healthDailyProfile));
+    const names = sql.join(columns.map(([, column]) => sql.identifier(column.name)), sql`, `);
+    const rows = sql.join(values.map((value) => sql`(${sql.join(
+      columns.map(([key]) => sql`${value[key as keyof typeof value] ?? null}`), sql`, `,
+    )})`), sql`, `);
+    const updates = sql.join(columns.filter(([key]) => !["ownerId", "profileId", "date"].includes(key))
+      .map(([, column]) => sql`${sql.identifier(column.name)} = excluded.${sql.identifier(column.name)}`), sql`, `);
+    // One lease predicate guards inserts AND conflict updates, including writes
+    // delayed in transit. Three rows stay below D1's per-statement bind limit.
+    const result = await getDb().run(sql`
+      WITH incoming (${names}) AS (VALUES ${rows})
+      INSERT INTO health_daily_profile (${names})
+      SELECT ${names} FROM incoming WHERE ${currentRefreshLease(lease)}
+      ON CONFLICT (owner_id, profile_id, date) DO UPDATE SET ${updates}
+    `);
+    if (result.meta.changes !== chunk.length) throw new LostRefreshLeaseError();
+    return;
+  }
   await getDb()
     .insert(healthDailyProfile)
     .values(values)

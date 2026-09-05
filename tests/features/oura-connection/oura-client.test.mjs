@@ -116,3 +116,16 @@ test("the hosted client rejects resources outside the aggregate allowlist", asyn
     /resource/i,
   );
 });
+test("cancellation stops pagination before another upstream request", async () => {
+  const controller = new AbortController();
+  let calls = 0;
+  await assert.rejects(fetchOuraResource("daily_sleep", { start: "2026-09-01", end: "2026-09-04" }, "synthetic-token", {
+    signal: controller.signal,
+    fetchImpl: async () => {
+      calls += 1;
+      controller.abort();
+      return Response.json({ data: [], next_token: "synthetic-page" });
+    },
+  }));
+  assert.equal(calls, 1);
+});
