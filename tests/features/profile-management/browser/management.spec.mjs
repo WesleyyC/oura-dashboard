@@ -103,6 +103,32 @@ test("Settings reconnect targets the existing profile and does not add a new one
   expect(state.errors).toEqual([]);
 });
 
+test("Settings product credit opens DrQ separately without a referrer or opener", async ({ page }) => {
+  const state = await sandbox(page);
+  await page.context().route("https://drq.ai/", (route) => route.fulfill({
+    contentType: "text/html", body: "<h1>Synthetic DrQ destination</h1>",
+  }));
+  await page.goto("/settings");
+  const credit = page.locator("footer");
+  await expect(credit).toContainText("A product by DrQ");
+  const link = credit.getByRole("link", { name: "DrQ (opens in a new tab)" });
+  await link.scrollIntoViewIfNeeded();
+  const bounds = await link.boundingBox();
+  expect(bounds.width).toBeGreaterThanOrEqual(44);
+  expect(bounds.height).toBeGreaterThanOrEqual(44);
+  await link.focus();
+  await expect(link).toHaveCSS("outline-style", "solid");
+  await noHorizontalOverflow(page);
+  const popupReady = page.waitForEvent("popup");
+  await page.keyboard.press("Enter");
+  const popup = await popupReady;
+  await expect(popup.getByRole("heading", { name: "Synthetic DrQ destination" })).toBeVisible();
+  expect(await popup.evaluate(() => ({ opener: window.opener === null, referrer: document.referrer })))
+    .toEqual({ opener: true, referrer: "" });
+  await expect(page).toHaveURL(`${origin}/settings`);
+  expect(state.errors).toEqual([]);
+});
+
 test("profile deletion requires confirmation and never deletes the account", async ({ page }) => {
   const state = await sandbox(page);
   await page.goto("/settings");

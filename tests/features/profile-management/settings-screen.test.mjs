@@ -77,6 +77,30 @@ function addPersonButton(root) {
   return root.findByProps({ "aria-controls": "add-person-panel" });
 }
 
+for (const [state, overrides] of [
+  ["loading", { loading: true }],
+  ["empty", {}],
+  ["connected", { profiles: [profile()] }],
+  ["deleted", { deleted: true }],
+]) {
+  test(`Settings keeps the DrQ product link available when ${state}`, (t) => {
+    const renderer = create(React.createElement(
+      SettingsContent,
+      { controller: controller(overrides) },
+    ));
+    t.after(() => act(() => renderer.unmount()));
+
+    const links = renderer.root.findAllByType("a").filter(
+      ({ props }) => props.href === "https://drq.ai/",
+    );
+    assert.equal(links.length, 1);
+    assert.equal(links[0].children.join(""), "DrQ");
+    assert.equal(links[0].props.target, "_blank");
+    assert.equal(links[0].props.rel, "noopener noreferrer");
+    assert.match(links[0].props["aria-label"], /opens in a new tab/);
+  });
+}
+
 test("add-person flow waits for loading and auto-opens an empty dashboard", (t) => {
   const renderer = create(React.createElement(
     SettingsContent,
