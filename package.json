@@ -15,7 +15,7 @@
   "scripts": {
     "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext dev",
     "build": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext build",
-    "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
+    "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log wrangler dev --config dist/server/wrangler.json --local --ip 127.0.0.1",
     "deploy:cloudflare": "vinext deploy",
     "test": "npm run build && node scripts/run-tests.mjs",
     "test:unit": "node scripts/run-tests.mjs",
@@ -51,7 +51,7 @@
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
-    "react-server-dom-webpack": "19.2.6",
+    "react-server-dom-webpack": "19.2.8",
     "react-test-renderer": "^19.2.6",
     "tailwindcss": "4.2.1",
     "tsx": "^4.22.1",
@@ -59,6 +59,11 @@
     "vinext": "0.0.50",
     "vite": "8.2.2",
     "wrangler": "4.127.1"
+  },
+  "overrides": {
+    "@esbuild-kit/core-utils": {
+      "esbuild": "0.25.12"
+    }
   },
   "type": "module"
 }

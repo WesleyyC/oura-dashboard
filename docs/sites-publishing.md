@@ -28,7 +28,8 @@ It must remain untracked: the public checks inspect Git membership, not whether
 the operator has configured a local checkout. Do not delete working operator
 configuration to make tests pass.
 
-Require both GitHub checks, `verify` and `browser-tests`, before merging a
+Require all three GitHub checks, `verify`, `browser-tests`, and
+`management-browser-tests`, before merging a
 release. Preserve strict/up-to-date checks, administrator enforcement, and the
 existing pull-request rules. Browser tests use fictional records only; see
 [Testing](agents/testing.md). CI validates code and does not deploy it.
