@@ -1111,6 +1111,23 @@ button:disabled {
   font-size: 0.75rem;
 }
 
+.settings-attribution {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 32px;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.settings-attribution a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+}
+
 .score-strip {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

@@ -30,6 +30,23 @@ function SettingsBackLink() {
   );
 }
 
+function SettingsAttribution() {
+  return (
+    <footer className="settings-attribution">
+      A product by{" "}
+      <a
+        className="text-link"
+        href="https://drq.ai/"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="DrQ (opens in a new tab)"
+      >
+        DrQ
+      </a>
+    </footer>
+  );
+}
+
 export function SettingsScreen({ callbackStatus }: SettingsScreenProps) {
   const controller = useSettingsController(callbackStatus);
   return <SettingsContent controller={controller} />;
@@ -82,6 +99,7 @@ export function SettingsContent({ controller }: SettingsContentProps) {
         <p className="settings-footnote">
           Opening the dashboard again will create a new, empty account.
         </p>
+        <SettingsAttribution />
       </main>
     );
   }
@@ -282,6 +300,7 @@ export function SettingsContent({ controller }: SettingsContentProps) {
           </form>
         </details>
       </section>
+      <SettingsAttribution />
     </main>
   );
 }
