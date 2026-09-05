@@ -64,6 +64,36 @@ the available recovery process and retention with the hosting operator before
 an incident. If no supported backup/export is available, that is an operational
 limitation; the synthetic drill below does not remove it.
 
+## Production recovery readiness
+
+Evidence reviewed on 2026-09-04: the [Sites guide](https://learn.chatgpt.com/docs/sites)
+describes saved code versions, D1 bindings and database inspection, but does not
+document database export, restore, retention or a recovery service-level
+commitment. The available Sites connector exposes schema/table inspection, not
+an export/restore operation. **Production database recovery is unverified, not
+configured or tested by this repository.** A code rollback cannot substitute for it.
+
+Keep this checklist in a private operator record. Do not fill it with account or
+database identifiers in a public issue:
+
+- Confirm a supported database export/restore method and the role allowed to use it.
+- Verify retention and the newest usable recovery point; define acceptable data
+  loss (RPO) and downtime (RTO). Do not infer Sites retention from Cloudflare plans.
+- Record the exact database, release, migration set and matching encryption-key
+  version. Store the key separately from the snapshot.
+- Obtain an isolated rehearsal target and explicit approval before exporting
+  production records. Rehearse with synthetic data first.
+- Verify the restored schema, owner isolation and token decryption using counts
+  only; invalidate old invitations, OAuth state and leases before restoring traffic.
+- Record measured recovery time, undo plan and the person authorizing a cutover.
+
+Questions for the hosting operator: Is a supported, private D1 export available?
+Who can restore it, to which target, and with what retention? Can restoration be
+rehearsed independently without modifying production? How are runtime key versions
+recovered alongside the database? Until these are answered, do not promise a
+recovery time or that cached data can be recovered after loss. No production
+export, restore, key rotation or backup automation is part of this checklist.
+
 ## Tested offline vault verification and planned rotation
 
 The offline tool requires Node 22.13+ and the repository's installed `tsx`.

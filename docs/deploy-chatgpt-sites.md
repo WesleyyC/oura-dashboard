@@ -11,6 +11,18 @@ source to GitHub does not update a Site.
 - An Oura OAuth application.
 - The values described in [Configuration](configuration.md).
 
+Check hosting eligibility before connecting people. The
+[Sites documentation](https://learn.chatgpt.com/docs/sites) says not to use Sites
+to process Protected Health Information or payment-card data, and states that
+data and inference residency are not supported. This dashboard's privacy controls
+do not override those platform restrictions or establish regulatory compliance.
+Determine whether your intended data and use are eligible; do not assume that
+every personal wellness record is PHI, or that every health-related use is allowed.
+
+Sites code versions are not database backups. Complete the
+[recovery readiness checklist](recovery.md#production-recovery-readiness) before
+relying on the deployment for irreplaceable records.
+
 ## Configure the project
 
 1. Copy the tracked template:
@@ -55,12 +67,16 @@ type in a short-lived server-side OAuth state and rejects the other callback.
 From a clean checkout:
 
 ```bash
+npm ci
 npm run audit:public
 npm test
 npm run typecheck
 npm run lint
 git diff --check
 ```
+
+See the [local-only installation rehearsal](installation-rehearsal.md) for the
+parts that can be checked without accounts, live credentials or real records.
 
 Publish the exact verified commit with the Sites workflow in Codex. Never add a
 Sites credential to Git remotes, configuration files, or logs.

@@ -30,3 +30,9 @@ route tests separately prove authorization, no-store responses and database
 isolation. It does not establish provider-level recovery or field performance.
 Failure screenshots/traces in ignored `work/results` contain synthetic data
 only. CI keeps them for seven days and never deploys from this workflow.
+
+For on-demand production-built mobile lab timings, run
+`node tests/features/profile-management/browser/performance.mjs` from the
+repository root. See [method, baseline and budgets](../../../../docs/dashboard-performance.md).
+This uses a separate loopback preview at port 5191 and does not run automatically
+with `npm test` or add any production monitoring.

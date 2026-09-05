@@ -13,6 +13,9 @@ and [Access JWT validation](https://developers.cloudflare.com/cloudflare-one/acc
 
 ## 1. Create the local operator config
 
+First-time operators can run the [local-only installation rehearsal](installation-rehearsal.md)
+without cloud accounts or credentials before proceeding with the real deployment.
+
 ```bash
 npm ci
 npx wrangler login
