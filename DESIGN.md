@@ -79,6 +79,16 @@ The initial dashboard shell reserves the three-score geometry with neutral, non-
 
 ## Motion and materials
 
+Individual score, Family score, and metric charts reuse the small axes,
+crosshair, marker, and message components in `ChartPrimitives.tsx` and the
+calendar-positioned scale/path helpers in `chart-geometry.ts`. Keep domain
+selection, series identity, legends, SVG descriptions, and accessible tables
+with their owning chart. Family scores explicitly clamp to their focused
+domain; metric and individual score scales retain their own behavior. Missing
+and non-finite values break a path rather than creating a misleading connection.
+Y-axis labels share the plotted coordinate transform, including the two metric
+endpoints. Do not introduce a configurable chart framework for these primitives.
+
 Chart selection moves crosshairs and readouts without reconstructing data-derived SVGs or accessible tables. Clicking or tapping keeps focus for subsequent keyboard use but does not draw a frame around the plot; Tab and chart-navigation keys retain a visible focus ring. Axis labels use the muted text color at a minimum of 12px, stay centered on their grid lines, and keep that size on phones. Empty and loading messages are centered within the plot, not the surrounding axes.
 
 Use 150–220ms ease-out transitions for selection, focus, hover, and expanding details. Do not orchestrate page-load animation. Respect `prefers-reduced-motion`. Reserve backdrop blur for the sticky control bar, with an opaque fallback under reduced transparency/high contrast conditions.

@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     ".worktrees/**",
+    // Generated local artifacts, including the synthetic browser's Vite cache.
+    "**/work/**",
     "next-env.d.ts",
   ]),
 ]);

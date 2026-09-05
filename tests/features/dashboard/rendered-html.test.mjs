@@ -693,7 +693,8 @@ test("metric explorer uses solid series, range averages, and accessible data", a
   assert.match(source, /MetricTrendChart/);
   assert.match(source, /today:\s*string/);
   assert.match(source, /rangeDateTicks\(range,\s*today\)/);
-  assert.match(source, /dateRangePosition\(date,\s*window\)/);
+  assert.match(source, /import \{[^}]*chartLinePath[^}]*\} from "\.\.\/presentation\/chart-geometry"/);
+  assert.match(source, /chartLinePath\(selectionPoints,\s*\(point\) => valueByDate\.get\(point\.date\),\s*chartY,\s*window\)/);
   assert.doesNotMatch(source, /strokeDasharray|data-pattern/);
 });
 
@@ -718,7 +719,9 @@ test("family view exposes solid score lines and a selectable detailed comparison
   assert.match(source, /familyScoreDomain/);
   assert.match(source, /familyScoreTicks/);
   assert.match(source, /rangeDateTicks\(range,\s*today\)/);
-  assert.match(source, /dateRangePosition\(point\.date,\s*window\)/);
+  assert.match(source, /import \{[^}]*chartLinePath[^}]*\} from "\.\.\/presentation\/chart-geometry"/);
+  assert.match(source, /chartLinePath\(trend,\s*\(point\) => point\.values\[profile\.id\],\s*chartY,\s*window\)/);
+  assert.match(source, /createChartScale\(domain,\s*CHART_HEIGHT,\s*\{ clamp: true \}\)/);
   assert.match(source, /Chart scale/);
   assert.doesNotMatch(source, /fixed 0–100 scale|FAMILY_TICKS\s*=\s*\[0,\s*25,\s*50,\s*75,\s*100\]/);
   assert.doesNotMatch(source, /data-pattern|long-dash|short-dash/);

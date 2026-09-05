@@ -108,7 +108,7 @@ test("score panel keeps pointer, touch, and keyboard selection in one visible ac
   assert.equal(focused, true);
   assert.deepEqual(readout(renderer.root), { date: "Jul 29", score: "86" });
   assert.equal(
-    renderer.root.findByProps({ className: "score-trend-crosshair" }).props.style.left,
+    renderer.root.find(node => node.type === "span" && node.props.className === "score-trend-crosshair").props.style.left,
     "50%",
   );
 
@@ -158,7 +158,7 @@ test("score panel removes an all-missing series from the tab order", (t) => {
   assert.equal(slider.props.tabIndex, -1);
   assert.equal(slider.props["aria-disabled"], true);
   assert.equal(renderer.root.findAllByProps({ className: "score-trend-crosshair" }).length, 0);
-  assert.match(renderer.root.findByProps({ className: "score-trend-message" }).children.join(""), /No readiness scores/i);
+  assert.match(renderer.root.find(node => node.type === "p" && node.props.className === "score-trend-message").children.join(""), /No readiness scores/i);
 
   let focused = false;
   let prevented = false;

@@ -4,12 +4,10 @@ import type { CSSProperties } from "react";
 
 import {
   buildMetricTrendPoints,
-  dateRangePosition,
   rangeDateTicks,
   rangeWindow,
   trendWindowDays,
   type DailyHealthRecord,
-  type DateRangeWindow,
   type MetricDefinition,
   type RangeKey,
 } from "@/features/health-data/client";
@@ -22,8 +20,9 @@ import {
   ChartDateReadout,
   ChartDateSelection,
 } from "./ChartDateSelection";
+import { CHART_WIDTH, chartLinePath, createChartScale } from "../presentation/chart-geometry";
+import { ChartCrosshair, ChartDateAxis, ChartMarker, ChartMessage, ChartYAxis } from "./ChartPrimitives";
 
-const CHART_WIDTH = 1_000;
 const CHART_HEIGHT = 240;
 
 export interface MetricChartSeries {
@@ -55,31 +54,6 @@ function seriesStyle(
     : undefined;
 }
 
-function chartY(value: number, minimum: number, maximum: number): number {
-  return ((maximum - value) / (maximum - minimum)) * CHART_HEIGHT;
-}
-
-function linePath(
-  dates: string[],
-  values: Map<string, number | null>,
-  minimum: number,
-  maximum: number,
-  window: DateRangeWindow,
-): string {
-  let continues = false;
-  return dates.map((date) => {
-    const value = values.get(date);
-    if (value === null || value === undefined || !Number.isFinite(value)) {
-      continues = false;
-      return "";
-    }
-    const command = continues ? "L" : "M";
-    continues = true;
-    const x = dateRangePosition(date, window) * CHART_WIDTH;
-    return `${command}${x.toFixed(1)} ${chartY(value, minimum, maximum).toFixed(1)}`;
-  }).filter(Boolean).join(" ");
-}
-
 export function MetricTrendChart({
   id,
   metric,
@@ -102,7 +76,9 @@ export function MetricTrendChart({
     ]),
   );
   const values = plotted.flatMap((item) => item.points.map((point) => point.value));
-  const { minimum, maximum } = metricDomain(values, series.map((item) => item.average));
+  const domain = metricDomain(values, series.map((item) => item.average));
+  const { minimum, maximum } = domain;
+  const chartY = createChartScale(domain, CHART_HEIGHT);
   const hasValues = values.some((value) => value !== null && Number.isFinite(value));
   const hasSelectableValues = plotted.some(
     (item) => !item.loading && item.points.some(
@@ -145,8 +121,8 @@ export function MetricTrendChart({
                 style={seriesStyle(identity)}
                 x1="0"
                 x2={CHART_WIDTH}
-                y1={chartY(item.average, minimum, maximum)}
-                y2={chartY(item.average, minimum, maximum)}
+                y1={chartY(item.average)}
+                y2={chartY(item.average)}
               />
             ) : null}
             <path
@@ -155,7 +131,7 @@ export function MetricTrendChart({
               data-identity={identity.type}
               data-profile-id={identity.type === "person" ? identity.profileId : undefined}
               style={seriesStyle(identity)}
-              d={linePath(dates, valueByDate, minimum, maximum, window)}
+              d={chartLinePath(selectionPoints, (point) => valueByDate.get(point.date), chartY, window)}
             />
           </g>
         );
@@ -250,21 +226,19 @@ export function MetricTrendChart({
                 }))}
               />
               <div className="metric-chart-body">
-                <div className="metric-chart-y-axis" aria-hidden="true">
-                  <span>{formatMetricValue(maximum, metric.format)}</span>
-                  <span>{formatMetricValue(minimum, metric.format)}</span>
-                </div>
+                <ChartYAxis
+                  className="metric-chart-y-axis"
+                  ticks={[maximum, minimum]}
+                  domain={domain}
+                  formatValue={(value) => formatMetricValue(value, metric.format)}
+                />
                 <div
                   className="metric-chart-plot chart-selection-surface"
                   {...surfaceProps}
                 >
                   {chart}
                   {activePoint && hasSelectableValues ? (
-                    <span
-                      className="chart-selection-crosshair"
-                      style={{ left: `${activePosition * 100}%` }}
-                      aria-hidden="true"
-                    >
+                    <ChartCrosshair position={activePosition}>
                       {activeValues.map(({ item, value }) => {
                         if (
                           item.loading ||
@@ -272,27 +246,22 @@ export function MetricTrendChart({
                           !Number.isFinite(value)
                         ) return null;
                         return (
-                          <i
-                            className="chart-selection-marker"
+                          <ChartMarker
+                            position={(chartY(value) / CHART_HEIGHT) * 100}
                             data-tone={item.identity.type === "metric" ? item.identity.tone : undefined}
                             data-profile-id={item.identity.type === "person" ? item.identity.profileId : undefined}
-                            style={{
-                              ...seriesStyle(item.identity),
-                              top: `${(chartY(value, minimum, maximum) / CHART_HEIGHT) * 100}%`,
-                            } as SeriesStyle}
+                            style={seriesStyle(item.identity)}
                             key={item.id}
                           />
                         );
                       })}
-                    </span>
+                    </ChartCrosshair>
                   ) : null}
-                  {selectionPending ? <p className="chart-message" role="status">Loading this trend…</p> : null}
-                  {!loading && !hasValues ? <p className="chart-message">No measurements are available for this range.</p> : null}
+                  {selectionPending ? <ChartMessage loading>Loading this trend…</ChartMessage> : null}
+                  {!loading && !hasValues ? <ChartMessage>No measurements are available for this range.</ChartMessage> : null}
                 </div>
               </div>
-              <div className="chart-date-axis metric-date-axis" aria-hidden="true">
-                {dateTicks.map((label) => <span key={label}>{label}</span>)}
-              </div>
+              <ChartDateAxis className="chart-date-axis metric-date-axis" labels={dateTicks} />
             </div>
 
             {dataTable}

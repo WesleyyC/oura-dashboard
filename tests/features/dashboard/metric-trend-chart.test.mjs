@@ -211,7 +211,9 @@ test("metric chart aligns its y-axis with the plot below the date readout", (t) 
 
   const frame = renderer.root.findByProps({ className: "metric-chart-frame" });
   const body = frame.findByProps({ className: "metric-chart-body" });
-  assert.equal(body.findAllByProps({ className: "metric-chart-y-axis" }).length, 1);
+  const axes = body.findAll(node => node.type === "div" && node.props.className === "metric-chart-y-axis");
+  assert.equal(axes.length, 1);
+  assert.deepEqual(axes[0].findAllByType("span").map(label => label.props.style.top), ["0%", "100%"]);
   assert.equal(body.findAllByProps({ className: "metric-chart-plot chart-selection-surface" }).length, 1);
   assert.equal(body.findAllByProps({ "data-chart-date-readout": "true" }).length, 0);
 });

@@ -2194,20 +2194,19 @@ button:disabled {
   position: absolute;
   top: 0;
   left: 0;
-  display: flex;
   width: 58px;
   height: 240px;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: space-between;
   color: var(--muted);
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
 }
 
-.metric-chart-y-axis span:first-child { transform: translateY(-50%); }
-.metric-chart-y-axis span:last-child { transform: translateY(50%); }
-.metric-chart-y-axis span { white-space: nowrap; }
+.metric-chart-y-axis span {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
 
 .metric-date-axis {
   margin-right: 0;
