@@ -37,6 +37,18 @@ npm --prefix tests/features/dashboard/browser test
 This suite also runs in the separate `Browser regressions` GitHub workflow on
 pull requests and pushes to `main`. CI validates only; it does not deploy.
 
+For Settings, connection flows, recovery UI, or controller-loading changes, also
+run the [management browser suite](../../tests/features/profile-management/browser/README.md):
+
+```bash
+npm --prefix tests/features/profile-management/browser test
+```
+
+Its separate `Management browser regressions` workflow covers Chromium and
+WebKit using synthetic APIs. Require `management-browser-tests` alongside
+`verify` and `browser-tests` when this workflow is installed on a protected repo.
+Run both browser suites for a release that changes shared UI or dashboard loading.
+
 Review the intended diff as well as command output. Source moves must preserve
 behavioral assertions rather than weaken them.
 

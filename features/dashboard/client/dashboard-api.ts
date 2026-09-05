@@ -2,8 +2,9 @@ import {
   type DateRangeWindow,
   type HealthResponse,
 } from "@/features/health-data/client";
-import type { HealthProfileSummary } from "@/features/profile-management/client";
+import { SAFE_REFRESH_ERROR_CODES, type HealthProfileSummary } from "@/features/profile-management/client";
 import type { ProfileRefreshResult } from "@/features/oura-connection/client";
+import { abortable, withDeadline } from "@/shared/abortable";
 import type { ProfileLoadState } from "../model/dashboard-state";
 
 export interface DashboardApi {
@@ -20,17 +21,29 @@ export interface DashboardApi {
   ): Promise<ProfileRefreshResult>;
 }
 
-export function createDashboardApi(fetchImpl: typeof fetch = fetch): DashboardApi {
+export function createDashboardApi(
+  fetchImpl: typeof fetch = fetch,
+  { readTimeoutMs = 30_000, refreshTimeoutMs = 270_000 } = {},
+): DashboardApi {
+  async function request(input: string, init: RequestInit, timeout: number) {
+    return withDeadline(async (deadline) => {
+      const signal = AbortSignal.any([deadline, ...(init.signal ? [init.signal] : [])]);
+      signal.throwIfAborted();
+      const response = await abortable(fetchImpl(input, { ...init, signal }), signal);
+      const body: unknown = await abortable(response.json(), signal);
+      return { response, body };
+    }, timeout);
+  }
   return {
     async loadProfiles(signal) {
-      const response = await fetchImpl("/api/profiles", {
+      const { response, body: payload } = await request("/api/profiles", {
         cache: "no-store",
         signal,
-      });
-      const body = (await response.json()) as {
+      }, readTimeoutMs);
+      const body = payload as {
         profiles?: HealthProfileSummary[];
       };
-      if (!response.ok || !Array.isArray(body.profiles)) {
+      if (!response.ok || !body || !Array.isArray(body.profiles)) {
         throw new Error("Profiles unavailable");
       }
       return body.profiles;
@@ -38,23 +51,20 @@ export function createDashboardApi(fetchImpl: typeof fetch = fetch): DashboardAp
 
     async loadHealthProfile(profile, window, signal) {
       const { start, end } = window;
-      const response = await fetchImpl(
+      const { response, body } = await request(
         `/api/health?profile=${profile.profile.slug}&start=${start}&end=${end}`,
         {
           signal,
           cache: "no-store",
         },
+        readTimeoutMs,
       );
-      const payload = (await response.json()) as HealthResponse & {
-        error?: string;
-      };
-      if (!response.ok) {
-        throw new Error(
-          payload.error ?? `${profile.profile.displayName} could not be loaded`,
-        );
+      const payload = body as HealthResponse;
+      if (!response.ok || !payload || !Array.isArray(payload.records)) {
+        throw new Error(`${profile.profile.displayName} could not be loaded`);
       }
       if (
-        payload.profile.id !== profile.profile.id ||
+        payload.profile?.id !== profile.profile.id ||
         payload.profile.slug !== profile.profile.slug
       ) {
         throw new Error(
@@ -65,7 +75,7 @@ export function createDashboardApi(fetchImpl: typeof fetch = fetch): DashboardAp
     },
 
     async requestProfileRefresh(profileId, timeZone, force = false) {
-      const response = await fetchImpl("/api/oura/refresh", {
+      const { response, body } = await request("/api/oura/refresh", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -74,13 +84,14 @@ export function createDashboardApi(fetchImpl: typeof fetch = fetch): DashboardAp
           ...(force ? { force: true } : {}),
         }),
         cache: "no-store",
-      });
-      const payload = (await response.json()) as Partial<ProfileRefreshResult>;
+      }, refreshTimeoutMs);
+      const payload = body as Partial<ProfileRefreshResult>;
       if (
-        typeof payload.profileId !== "string" ||
-        typeof payload.status !== "string" ||
-        !("lastSucceededAt" in payload) ||
-        !("safeErrorCode" in payload)
+        !payload || (!response.ok && payload.status !== "failed") ||
+        payload.profileId !== profileId ||
+        !["fresh", "refreshed", "already_running", "failed"].includes(payload.status ?? "") ||
+        !(payload.lastSucceededAt === null || (typeof payload.lastSucceededAt === "string" && Number.isFinite(Date.parse(payload.lastSucceededAt)))) ||
+        !(payload.safeErrorCode === null || SAFE_REFRESH_ERROR_CODES.some((code) => code === payload.safeErrorCode))
       ) {
         throw new Error("Refresh unavailable");
       }

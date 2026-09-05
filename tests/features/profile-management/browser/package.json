@@ -1,0 +1,11 @@
+{
+  "name": "oura-management-browser-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "preview": "node preview.mjs",
+    "install:browser": "playwright install chromium webkit"
+  },
+  "devDependencies": { "@playwright/test": "1.63.0" }
+}

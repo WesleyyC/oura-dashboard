@@ -31,6 +31,7 @@ export async function POST(request: Request) {
   try {
     const result = await refreshProfile(user.userId, input.profileId, {
       force: input.force,
+      repairHistory: input.repairHistory,
       timeZone: input.timeZone,
       oauthConfig: oauthConfigFor(request, "owner"),
     });

@@ -6,14 +6,16 @@ export type HealthProfileStatus =
   | "connected"
   | "reauthorization_required"
   | "disabled";
-export type SafeRefreshErrorCode =
-  | "authorization_required"
-  | "configuration_missing"
-  | "oura_unavailable"
-  | "rate_limited"
-  | "storage_failed"
-  | "refresh_interrupted"
-  | "unexpected";
+export const SAFE_REFRESH_ERROR_CODES = [
+  "authorization_required",
+  "configuration_missing",
+  "oura_unavailable",
+  "rate_limited",
+  "storage_failed",
+  "refresh_interrupted",
+  "unexpected",
+] as const;
+export type SafeRefreshErrorCode = (typeof SAFE_REFRESH_ERROR_CODES)[number];
 
 export interface HealthAccount {
   ownerId: string;

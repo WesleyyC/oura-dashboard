@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState, type ComponentProps } from "react";
 import { RefreshCw, Settings as SettingsIcon } from "lucide-react";
 
 import {
@@ -22,8 +22,25 @@ import {
   RANGES,
   summarizeDashboardRefresh,
 } from "../presentation/health-ui";
-import { FamilyHealthView } from "./FamilyHealthView";
+import type { FamilyHealthView as FamilyViewComponent } from "./FamilyHealthView";
 import { IndividualHealthView } from "./IndividualHealthView";
+
+function FamilyHealthView(props: ComponentProps<typeof FamilyViewComponent>) {
+  const [View, setView] = useState<typeof FamilyViewComponent | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void import("./FamilyHealthView").then(
+      (module) => { if (active) setView(() => module.FamilyHealthView); },
+      () => { if (active) setFailed(true); },
+    );
+    return () => { active = false; };
+  }, []);
+  return View ? <View {...props} /> : <section className="notice" role={failed ? "alert" : "status"}>
+    <p>{failed ? "Family view could not be loaded." : "Loading Family view…"}</p>
+    {failed ? <button className="secondary-button" type="button" onClick={() => window.location.reload()}>Reload page</button> : null}
+  </section>;
+}
 
 export function DashboardScreen({
   initialView = "",

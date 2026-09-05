@@ -756,10 +756,13 @@ button:disabled {
 
 .profile-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 
 .profile-card {
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 22px;
   border: 1px solid var(--separator);
   border-radius: var(--radius);
@@ -789,6 +792,7 @@ button:disabled {
 .profile-card h3 {
   margin-bottom: 0;
   font-size: 1.125rem;
+  overflow-wrap: anywhere;
 }
 
 .profile-meta {
@@ -982,6 +986,30 @@ button:disabled {
   margin: -4px 0 24px;
   font-size: 0.8125rem;
   font-variant-numeric: tabular-nums;
+}
+
+.guest-sharing-notice { margin-block: 24px; }
+.guest-sharing-notice h2 { margin-block: 24px 8px; font-size: 1.125rem; }
+.guest-sharing-notice p { margin-block: 0 12px; line-height: 1.6; }
+.guest-connect-card, .sync-diagnostics { overflow-wrap: anywhere; }
+.sync-diagnostics { margin-block: 24px; }
+.account-disclosure.sync-diagnostics summary { color: var(--ink); font-size: 1rem; }
+.sync-diagnostics p { margin-block: 16px; }
+.sync-diagnostics dt { margin-block-start: 16px; font-weight: 600; }
+.sync-diagnostics dd { margin: 4px 0 16px; color: var(--muted); line-height: 1.6; }
+.sync-diagnostics select {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+  /* WebKit's native select theme ignores min-height without a height. */
+  height: 2.75rem;
+  padding: 10px 12px;
+  border: 1px solid var(--separator);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1rem;
 }
 
 .destructive-text-button {

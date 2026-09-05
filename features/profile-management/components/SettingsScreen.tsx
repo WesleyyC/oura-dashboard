@@ -3,6 +3,7 @@
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { SyncDiagnostics } from "@/features/oura-connection/client";
 
 import {
   useSettingsController,
@@ -238,6 +239,8 @@ export function SettingsContent({ controller }: SettingsContentProps) {
           {loading ? "Checking" : setupReady ? "Ready" : "Setup required"}
         </span>
       </section>
+
+      <SyncDiagnostics profiles={profiles} disabled={loading || busyAction !== null} />
 
       <section className="danger-zone" aria-labelledby="dashboard-account">
         <div>

@@ -42,6 +42,7 @@ const REFRESH_DEADLINE_MS = 4 * 60 * 1_000;
 
 export interface RefreshProfileOptions {
   force?: boolean;
+  repairHistory?: boolean;
   timeZone?: string;
   deadlineMs?: number;
   cleanupDeadlineMs?: number;
@@ -140,6 +141,7 @@ async function executeRefresh(
   const startedAt = now();
   const historyRange = rangeWindow("6m", dateInTimeZone(startedAt, timeZone));
   const needsBackfill =
+    options.repairHistory === true ||
     profile.coverageStartDate === null ||
     profile.coverageStartDate > historyRange.start;
   if (

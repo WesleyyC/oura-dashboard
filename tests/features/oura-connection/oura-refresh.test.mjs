@@ -50,6 +50,17 @@ function dependencies(overrides = {}) {
   };
 }
 
+test("explicit history repair refetches six months even when recent data is fresh", async () => {
+  let requested;
+  const result = await refreshProfile("owner-a", "profile-a", dependencies({
+    repairHistory: true,
+    loadProfile: async () => ({ ...PROFILE, lastSucceededAt: NOW.toISOString() }),
+    collect: async (_tokens, _profile, range) => { requested = range; return []; },
+  }));
+  assert.equal(result.status, "refreshed");
+  assert.deepEqual(requested, { start: "2026-01-30", end: "2026-07-30" });
+});
+
 test("three hours is the stale boundary", () => {
   assert.equal(
     isProfileStale("2026-07-30T12:00:01.000Z", NOW),

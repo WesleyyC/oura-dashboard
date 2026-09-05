@@ -9,6 +9,7 @@ import {
   DashboardScreen,
 } from "../../../features/dashboard/components/DashboardScreen.tsx";
 import { useDashboardController } from "../../../features/dashboard/model/use-dashboard-controller.ts";
+import { IndividualHealthView } from "../../../features/dashboard/components/IndividualHealthView.tsx";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -86,8 +87,8 @@ function textContent(node) {
   return node.children.map(textContent).join("");
 }
 
-function ControllerProbe({ api, onRender }) {
-  const controller = useDashboardController("member-one", api);
+function ControllerProbe({ api, onRender, initialView = "member-one" }) {
+  const controller = useDashboardController(initialView, api);
   onRender(controller);
   return null;
 }
@@ -100,6 +101,7 @@ function installBrowser(t, { timeZone } = {}) {
   const originalError = console.error;
   const originalResolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
   const documentTarget = new EventTarget();
+  const intervals = new Map();
   Object.defineProperty(documentTarget, "visibilityState", {
     configurable: true,
     value: "visible",
@@ -108,8 +110,9 @@ function installBrowser(t, { timeZone } = {}) {
   globalThis.window = {
     location: { href: "https://health.example/?view=member-one" },
     history: { replaceState() {} },
-    setInterval() {
-      return 1;
+    setInterval(callback, delay) {
+      intervals.set(delay, callback);
+      return delay;
     },
     clearInterval() {},
     setTimeout: globalThis.setTimeout.bind(globalThis),
@@ -137,7 +140,197 @@ function installBrowser(t, { timeZone } = {}) {
     globalThis.fetch = originalFetch;
     Intl.DateTimeFormat.prototype.resolvedOptions = originalResolvedOptions;
   });
+  return { intervals, documentTarget };
 }
+
+test("an eight-person dashboard loads only the selected person's cache until another view is needed", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-02T12:00:00.000Z") });
+  let renderer;
+  t.after(() => { if (renderer) act(() => renderer.unmount()); });
+  installBrowser(t);
+  const summaries = Array.from({ length: 8 }, (_, index) => ({
+    ...profile, id: `profile-${index}`, slug: index ? `member-${index}` : "member-one",
+  }));
+  const calls = [];
+  let controller;
+  const api = {
+    async loadProfiles() { return summaries; },
+    async loadHealthProfile(target, window) {
+      calls.push({ id: target.profile.id, ...window });
+      return { profile: target.profile, records: [record], updatedAt: profile.lastSucceededAt };
+    },
+    async requestProfileRefresh() { throw new Error("Fresh profiles do not need refresh"); },
+  };
+  await act(async () => {
+    renderer = TestRenderer.create(React.createElement(ControllerProbe, { api, onRender(value) { controller = value; } }));
+    await flushAsync(20);
+  });
+  assert.equal(calls.length, 2, "one recent-window request and one selected-person history request");
+  assert.ok(calls.every(({ id }) => id === "profile-0"));
+  await act(async () => { controller.changeView("member-7"); await flushAsync(20); });
+  assert.ok(calls.slice(2).every(({ id }) => id === "profile-7"));
+  assert.equal(controller.profiles.find(({ profile }) => profile.id === "profile-7").records.length, 1);
+});
+
+for (const phase of ["recent", "history"]) {
+  test(`queued ${phase} reads from an old lifecycle cannot start or overwrite current data`, async (t) => {
+    t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-02T12:00:00.000Z") });
+    let renderer;
+    t.after(() => { if (renderer) act(() => renderer.unmount()); });
+    installBrowser(t);
+    const people = Array.from({ length: 3 }, (_, index) => ({ ...profile, id: `profile-${index}`, slug: `member-${index}` }));
+    const pending = [deferred(), deferred()];
+    let afterReset = false;
+    let lateCalls = 0;
+    let controller;
+    const onRender = (value) => { controller = value; };
+    const oldApi = {
+      async loadProfiles() { return people; },
+      async loadHealthProfile(target, window) {
+        if (afterReset) lateCalls += 1;
+        const index = people.findIndex(({ id }) => id === target.profile.id);
+        if (index < 2 && (phase === "recent" ? window.start === "2026-07-27" : window.start === "2026-02-02")) await pending[index].promise;
+        return { profile: target.profile, records: [{ ...record, steps: 1 }], updatedAt: profile.lastSucceededAt };
+      },
+      async requestProfileRefresh() { throw new Error("Unexpected refresh"); },
+    };
+    const newApi = { ...oldApi, async loadHealthProfile(target) { return { profile: target.profile, records: [{ ...record, steps: 2 }], updatedAt: profile.lastSucceededAt }; } };
+    await act(async () => { renderer = TestRenderer.create(React.createElement(ControllerProbe, { api: oldApi, initialView: "family", onRender })); await flushAsync(30); });
+    afterReset = true;
+    await act(async () => { renderer.update(React.createElement(ControllerProbe, { api: newApi, initialView: "family", onRender })); await flushAsync(30); });
+    await act(async () => { pending.forEach(({ resolve }) => resolve()); await flushAsync(30); });
+    assert.equal(lateCalls, 0);
+    assert.ok(controller.profiles.every(({ records }) => records[0].steps === 2));
+  });
+}
+
+test("hidden tabs do no polling work and catch up on return", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-02T12:00:00.000Z") });
+  let renderer;
+  t.after(() => { if (renderer) act(() => renderer.unmount()); });
+  const { intervals, documentTarget } = installBrowser(t);
+  let calls = 0;
+  const api = {
+    async loadProfiles() { return [profile]; },
+    async loadHealthProfile(target) {
+      calls += 1;
+      return { profile: target.profile, records: [record], updatedAt: profile.lastSucceededAt };
+    },
+    async requestProfileRefresh() { throw new Error("Fresh profiles do not need refresh"); },
+  };
+  await act(async () => {
+    renderer = TestRenderer.create(React.createElement(ControllerProbe, { api, onRender() {} }));
+    await flushAsync(20);
+  });
+  const baseline = calls;
+  Object.defineProperty(documentTarget, "visibilityState", { configurable: true, value: "hidden" });
+  await act(async () => { intervals.get(5 * 60_000)(); await flushAsync(20); });
+  assert.equal(calls, baseline);
+  Object.defineProperty(documentTarget, "visibilityState", { configurable: true, value: "visible" });
+  await act(async () => { documentTarget.dispatchEvent(new Event("visibilitychange")); await flushAsync(20); });
+  assert.ok(calls > baseline);
+});
+
+test("a completed refresh updates its person before a slower peer finishes", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-02T12:00:00.000Z") });
+  let renderer;
+  t.after(() => { if (renderer) act(() => renderer.unmount()); });
+  installBrowser(t);
+  const peer = { ...profile, id: "profile-peer", slug: "peer" };
+  const replies = [deferred(), deferred()];
+  let controller;
+  const api = {
+    async loadProfiles() { return [profile, peer]; },
+    async loadHealthProfile(target) { return { profile: target.profile, records: [record], updatedAt: profile.lastSucceededAt }; },
+    requestProfileRefresh(id) { return replies[id === profile.id ? 0 : 1].promise; },
+  };
+  await act(async () => {
+    renderer = TestRenderer.create(React.createElement(ControllerProbe, { api, onRender(value) { controller = value; } }));
+    await flushAsync(20);
+  });
+  let refresh;
+  await act(async () => { refresh = controller.refreshProfiles(controller.profiles, true); await flushAsync(); });
+  await act(async () => {
+    replies[0].resolve({ profileId: profile.id, status: "refreshed", safeErrorCode: null, lastSucceededAt: profile.lastSucceededAt });
+    await flushAsync(20);
+  });
+  assert.equal(controller.profiles[0].refreshing, false);
+  assert.equal(controller.profiles[1].refreshing, true);
+  await act(async () => {
+    replies[1].resolve({ profileId: peer.id, status: "refreshed", safeErrorCode: null, lastSucceededAt: peer.lastSucceededAt });
+    await refresh;
+  });
+});
+
+test("closed daily details mount no record rows and reveal all rows on demand", async (t) => {
+  let renderer;
+  t.after(() => { if (renderer) act(() => renderer.unmount()); });
+  installBrowser(t);
+  const records = Array.from({ length: 180 }, (_, index) => ({
+    ...record, date: new Date(Date.UTC(2026, 1, 4 + index)).toISOString().slice(0, 10),
+  }));
+  act(() => {
+    renderer = TestRenderer.create(React.createElement(IndividualHealthView, {
+      profileId: profile.id, displayName: profile.displayName, colorKey: "ocean", range: "6m",
+      records, loading: false, error: null, today: "2026-08-02", onRetry() {},
+    }));
+  });
+  const details = renderer.root.findByProps({ className: "daily-details" });
+  assert.equal(details.findAllByType("tr").length, 0);
+  act(() => details.props.onToggle({ currentTarget: { open: true } }));
+  await act(async () => {
+    await import("../../../features/dashboard/components/DailyDetailsTable.tsx");
+  });
+  assert.equal(details.findAllByType("tbody")[0].findAllByType("tr").length, 180);
+  act(() => details.props.onToggle({ currentTarget: { open: false } }));
+  assert.equal(details.findAllByType("tr").length, 0);
+});
+
+test("retrying a failed profile list actually requests the list again", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-02T12:00:00.000Z") });
+  let renderer;
+  t.after(() => { if (renderer) act(() => renderer.unmount()); });
+  installBrowser(t);
+  let controller;
+  let attempts = 0;
+  const api = {
+    async loadProfiles() { if (++attempts === 1) throw new Error("offline"); return [profile]; },
+    async loadHealthProfile(target) { return { profile: target.profile, records: [record], updatedAt: profile.lastSucceededAt }; },
+    async requestProfileRefresh() { throw new Error("Unexpected refresh"); },
+  };
+  await act(async () => { renderer = TestRenderer.create(React.createElement(ControllerProbe, { api, onRender: (value) => { controller = value; } })); await flushAsync(20); });
+  assert.ok(controller.profileListError);
+  await act(async () => { controller.retryProfiles(); await flushAsync(20); });
+  assert.equal(attempts, 2);
+  assert.equal(controller.profileListError, null);
+  assert.equal(controller.profiles[0].profile.id, profile.id);
+});
+
+test("an old mutation response cannot change status after the dashboard reinitializes", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-02T12:00:00.000Z") });
+  let renderer;
+  t.after(() => { if (renderer) act(() => renderer.unmount()); });
+  installBrowser(t);
+  const pending = deferred();
+  let controller;
+  const onRender = (value) => { controller = value; };
+  const first = {
+    async loadProfiles() { return [profile]; },
+    async loadHealthProfile(target) { return { profile: target.profile, records: [record], updatedAt: profile.lastSucceededAt }; },
+    requestProfileRefresh() { return pending.promise; },
+  };
+  const second = { ...first, async loadProfiles() { return [{ ...profile, lastSucceededAt: "2026-08-02T13:00:00.000Z" }]; } };
+  await act(async () => { renderer = TestRenderer.create(React.createElement(ControllerProbe, { api: first, onRender })); await flushAsync(20); });
+  let refresh;
+  await act(async () => { refresh = controller.refreshProfiles(controller.profiles, true); await flushAsync(); });
+  await act(async () => { renderer.update(React.createElement(ControllerProbe, { api: second, onRender })); await flushAsync(20); });
+  await act(async () => {
+    pending.resolve({ profileId: profile.id, status: "failed", safeErrorCode: "authorization_required", lastSucceededAt: profile.lastSucceededAt });
+    await refresh;
+  });
+  assert.equal(controller.profiles[0].profile.status, "connected");
+  assert.equal(controller.profiles[0].profile.lastSucceededAt, "2026-08-02T13:00:00.000Z");
+});
 
 test("a China device boundary drives health windows and automatic and manual refreshes", async (t) => {
   t.mock.timers.enable({
@@ -511,6 +704,12 @@ test("Family applies each six-month profile response independently", async (t) =
     await flushAsync();
   });
 
+  await act(async () => {
+    await import("../../../features/dashboard/components/FamilyHealthView.tsx");
+  });
+  await act(async () => {
+    await import("../../../features/dashboard/components/FamilyHealthView.tsx");
+  });
   const legendItems = renderer.root.findAllByProps({
     className: "family-score-legend-item",
   });
@@ -1239,7 +1438,7 @@ test("an incomplete individual range never presents cached partial averages", (t
   ]);
 });
 
-test("Family keeps a covered peer visible while another profile loads history", (t) => {
+test("Family keeps a covered peer visible while another profile loads history", async (t) => {
   let renderer;
   t.after(() => {
     if (renderer) act(() => renderer.unmount());
@@ -1306,6 +1505,7 @@ test("Family keeps a covered peer visible while another profile loads history", 
     );
   });
 
+  await act(async () => { await import("../../../features/dashboard/components/FamilyHealthView.tsx"); });
   const legendItems = renderer.root.findAllByProps({
     className: "family-score-legend-item",
   });

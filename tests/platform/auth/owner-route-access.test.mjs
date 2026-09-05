@@ -52,6 +52,7 @@ test("every owner API rejects an authenticated unapproved identity before input"
     ["GET", "/api/account"],
     ["GET", "/api/health"],
     ["GET", "/api/profiles"],
+    ["GET", "/api/oura/diagnostics"],
     ["POST", "/api/oura/authorize"],
     ["POST", "/api/oura/refresh"],
     ["POST", "/api/oura/invites"],

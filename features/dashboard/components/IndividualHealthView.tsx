@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 
 import {
   METRIC_GROUPS,
@@ -30,7 +30,6 @@ import {
   formatDate,
   formatMetricRange,
   formatMetricValue,
-  formatMinutes,
   formatScore,
   RANGES,
   scoreTrendDomain,
@@ -248,17 +247,32 @@ export function IndividualHealthView({
         </div>
       </section>
 
-      <details className="daily-details">
-        <summary><span>Daily details</span><span>{visible.length} days</span></summary>
-        <div className="table-scroll">
-          <table>
-            <caption>Daily Oura scores, sleep, body signals, stress, and movement</caption>
-            <thead><tr><th>Date</th><th>Readiness</th><th>Sleep</th><th>Activity</th><th>Total sleep</th><th>Efficiency</th><th>Deep</th><th>REM</th><th>HRV</th><th>Lowest HR</th><th>Breathing</th><th>Stress</th><th>Restorative</th><th>Active</th><th>Sedentary</th><th>Steps</th><th>Active kcal</th><th>Workouts</th><th>Workout time</th></tr></thead>
-            <tbody>{visible.toReversed().map((record) => <tr key={record.date}><th>{formatDate(record.date)}</th><td>{formatScore(record.readinessScore)}</td><td>{formatScore(record.sleepScore)}</td><td>{formatScore(record.activityScore)}</td><td>{formatMinutes(record.totalSleepMinutes)}</td><td>{formatMetricValue(record.sleepEfficiency, "percent")}</td><td>{formatMinutes(record.deepSleepMinutes)}</td><td>{formatMinutes(record.remSleepMinutes)}</td><td>{formatMetricValue(record.hrvMs, "milliseconds")}</td><td>{formatMetricValue(record.restingHeartRate, "bpm")}</td><td>{formatMetricValue(record.averageBreathingRate, "breathing")}</td><td>{formatMinutes(record.stressMinutes)}</td><td>{formatMinutes(record.recoveryMinutes)}</td><td>{formatMinutes(record.activeMinutes)}</td><td>{formatMinutes(record.sedentaryMinutes)}</td><td>{formatMetricValue(record.steps, "integer")}</td><td>{formatMetricValue(record.activeCalories, "calories")}</td><td>{formatMetricValue(record.workoutCount, "count")}</td><td>{formatMinutes(record.workoutMinutes)}</td></tr>)}</tbody>
-          </table>
-        </div>
-      </details>
+      <DailyDetails records={visible} />
 
     </ChartDateSelectionGroup>
+  );
+}
+
+function DailyDetails({ records }: { records: DailyHealthRecord[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const [Table, setTable] = useState<ComponentType<{ records: DailyHealthRecord[] }> | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    if (!expanded || Table) return;
+    let active = true;
+    void import("./DailyDetailsTable").then(
+      (module) => { if (active) setTable(() => module.default); },
+      () => { if (active) setFailed(true); },
+    );
+    return () => { active = false; };
+  }, [expanded, Table, retry]);
+  return (
+    <details className="daily-details" onToggle={(event) => setExpanded(event.currentTarget.open)}>
+      <summary><span>Daily details</span><span>{records.length} days</span></summary>
+      {expanded ? Table ? <Table records={records} /> : failed ?
+        <p role="alert">Daily details could not be loaded. <button className="secondary-button" type="button" onClick={() => { setFailed(false); setRetry((value) => value + 1); }}>Try again</button></p>
+        : <p role="status">Loading daily details…</p> : null}
+    </details>
   );
 }
